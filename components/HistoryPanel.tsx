@@ -29,16 +29,24 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, user, onLo
 
   const handleToggleFavorite = (mixId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
+    
+    // Optimistic update: update UI immediately before storage operation
+    setMixes(prev => prev.map(m => 
+        m.id === mixId ? { ...m, isFavorite: !m.isFavorite } : m
+    ));
+    
     toggleFavoriteMix(mixId);
-    refreshData();
   };
 
   const handleDelete = (mixId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if(window.confirm("Удалить этот микс из истории?")) {
-        deleteMix(mixId);
-        refreshData();
-    }
+    e.preventDefault();
+    
+    // Optimistic update: remove from UI immediately
+    setMixes(prev => prev.filter(m => m.id !== mixId));
+    
+    deleteMix(mixId);
   };
 
   if (!isOpen) return null;
@@ -92,8 +100,8 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, user, onLo
                 className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-emerald-500/50 transition-all cursor-pointer group relative"
               >
                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                        <h3 className="font-bold text-white text-lg">
+                    <div className="flex-1 pr-4">
+                        <h3 className="font-bold text-white text-lg line-clamp-1">
                             {mix.aiAnalysis ? mix.aiAnalysis.title : 'Микс без названия'}
                         </h3>
                         <span className="text-xs text-slate-500">
@@ -102,9 +110,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, user, onLo
                     </div>
                     <button 
                         onClick={(e) => handleToggleFavorite(mix.id, e)}
-                        className="p-2 rounded-full hover:bg-slate-800 transition-colors"
+                        className={`p-2 rounded-full transition-colors relative z-10 ${mix.isFavorite ? 'bg-red-900/20' : 'hover:bg-slate-800'}`}
                     >
-                        <Heart size={18} className={mix.isFavorite ? "text-red-500 fill-red-500" : "text-slate-600"} />
+                        <Heart size={20} className={mix.isFavorite ? "text-red-500 fill-red-500" : "text-slate-600"} />
                     </button>
                  </div>
 
@@ -119,10 +127,13 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, user, onLo
                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-800/50">
                     <button 
                         onClick={(e) => handleDelete(mix.id, e)}
-                        className="text-slate-600 hover:text-red-500 p-1"
+                        className="flex items-center gap-1 text-slate-500 hover:text-red-400 p-2 px-3 -ml-2 rounded-lg hover:bg-red-900/10 transition-colors relative z-10 group/delete"
+                        title="Удалить"
                     >
-                        <Trash2 size={16} />
+                        <Trash2 size={18} className="group-hover/delete:scale-110 transition-transform" />
+                        <span className="text-xs">Удалить</span>
                     </button>
+                    
                     <span className="text-emerald-500 text-xs font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                         Загрузить в чашу <ArrowRightCircle size={14} />
                     </span>

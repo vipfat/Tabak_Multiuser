@@ -1,9 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye } from 'lucide-react';
+import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, Cloud, Wifi } from 'lucide-react';
 import { Flavor, MixIngredient, TelegramUser, SavedMix, AiAnalysisResult } from './types';
-import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
+import { MAX_BOWL_SIZE } from './constants';
 import { getTelegramUser } from './services/telegramService';
-import { saveMixToHistory, getHistory } from './services/storageService';
+import { 
+  saveMixToHistory, 
+  getStoredFlavorsLocal, 
+  fetchFlavors,
+  saveStoredFlavors, 
+  resetStoredFlavors,
+  getCloudId 
+} from './services/storageService';
 import BowlChart from './components/BowlChart';
 import FlavorSelector from './components/FlavorSelector';
 import MixControls from './components/MixControls';
@@ -17,9 +24,11 @@ const App: React.FC = () => {
   const [user, setUser] = useState<TelegramUser | null>(null);
   
   // App State
-  const [allFlavors, setAllFlavors] = useState<Flavor[]>(AVAILABLE_FLAVORS);
+  // Initialize from local cache for instant render
+  const [allFlavors, setAllFlavors] = useState<Flavor[]>(() => getStoredFlavorsLocal());
   const [mix, setMix] = useState<MixIngredient[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
+  const [isCloudConnected, setIsCloudConnected] = useState(false);
 
   // UI State
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -36,6 +45,27 @@ const App: React.FC = () => {
   useEffect(() => {
     const tgUser = getTelegramUser();
     setUser(tgUser);
+    setIsCloudConnected(!!getCloudId());
+
+    // Initial Fetch (Refresh from cloud if available)
+    const loadData = async () => {
+        const flavors = await fetchFlavors();
+        setAllFlavors(flavors);
+    };
+    loadData();
+
+    // POLLING: Check for global updates every 10 seconds if cloud is active
+    const intervalId = setInterval(async () => {
+        if (getCloudId()) {
+            const flavors = await fetchFlavors();
+            // Only update if deep comparison needed? React state setter handles ref equality usually,
+            // but here we just set it. Optimally check if changed, but for this size it's fine.
+            setAllFlavors(flavors);
+            setIsCloudConnected(true);
+        }
+    }, 10000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Filtered available flavors for the selector
@@ -50,7 +80,7 @@ const App: React.FC = () => {
 
   // SECRET TRIGGER LOGIC
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     if (secretClicks > 0) {
       // Reset clicks if user stops clicking for 1 second
       timer = setTimeout(() => setSecretClicks(0), 800);
@@ -144,12 +174,23 @@ const App: React.FC = () => {
   };
 
   // --- Admin Actions ---
-  const handleUpdateFlavor = (updatedFlavor: Flavor) => {
-    setAllFlavors(prev => prev.map(f => f.id === updatedFlavor.id ? updatedFlavor : f));
+  const handleUpdateFlavor = async (updatedFlavor: Flavor) => {
+    const newList = allFlavors.map(f => f.id === updatedFlavor.id ? updatedFlavor : f);
+    setAllFlavors(newList); // Optimistic UI
+    await saveStoredFlavors(newList);
   };
 
-  const handleAddFlavor = (newFlavor: Flavor) => {
-    setAllFlavors(prev => [newFlavor, ...prev]);
+  const handleAddFlavor = async (newFlavor: Flavor) => {
+    const newList = [newFlavor, ...allFlavors];
+    setAllFlavors(newList); // Optimistic UI
+    await saveStoredFlavors(newList);
+  };
+
+  const handleResetFlavors = async () => {
+    if (window.confirm("Сбросить меню вкусов к стандартному набору? Это удалит созданные вкусы глобально.")) {
+        const defaults = await resetStoredFlavors();
+        setAllFlavors(defaults);
+    }
   };
 
   return (
@@ -162,8 +203,11 @@ const App: React.FC = () => {
             className="flex items-center gap-2 cursor-pointer select-none active:scale-95 transition-transform"
             onClick={handleSecretClick}
           >
-             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-900/20">
+             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-900/20 relative">
                <Leaf size={18} fill="currentColor" className="text-white/90" />
+               {isCloudConnected && (
+                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-slate-950" title="Облако подключено"></span>
+               )}
              </div>
              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 hidden sm:block">
                Кальянный<span className="text-emerald-400">Алхимик</span>
@@ -203,9 +247,17 @@ const App: React.FC = () => {
         <div className="flex justify-between items-end mb-4 px-1">
             <div>
                 <h2 className="text-lg font-semibold text-white">Ингредиенты</h2>
-                <p className="text-xs text-slate-400">
-                   {totalWeight === MAX_BOWL_SIZE ? 'Чаша полна' : `осталось ${MAX_BOWL_SIZE - totalWeight}г`}
-                </p>
+                <div className="flex items-center gap-2">
+                    <p className="text-xs text-slate-400">
+                    {totalWeight === MAX_BOWL_SIZE ? 'Чаша полна' : `осталось ${MAX_BOWL_SIZE - totalWeight}г`}
+                    </p>
+                    {isCloudConnected && (
+                        <span className="flex items-center gap-1 text-[10px] text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded border border-blue-500/20">
+                            <Wifi size={10} />
+                            ONLINE
+                        </span>
+                    )}
+                </div>
             </div>
             <button
                 onClick={() => setIsSelectorOpen(true)}
@@ -226,7 +278,7 @@ const App: React.FC = () => {
             />
         </section>
 
-        {/* AI Section (Pass setAiAnalysis so we can save the result later) */}
+        {/* AI Section */}
         <AiAssistant mix={mix} onAnalysisComplete={setAiAnalysis} />
 
         {/* Bottom Action Bar */}
@@ -291,6 +343,7 @@ const App: React.FC = () => {
         allFlavors={allFlavors}
         onUpdateFlavor={handleUpdateFlavor}
         onAddFlavor={handleAddFlavor}
+        onResetFlavors={handleResetFlavors}
       />
 
       {/* Secret PIN Modal */}

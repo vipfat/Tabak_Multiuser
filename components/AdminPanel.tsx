@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Flavor, FlavorCategory } from '../types';
-import { X, Save, Plus, Power, Eye, EyeOff } from 'lucide-react';
+import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, Copy, Check } from 'lucide-react';
+import { getCloudId, setCloudId, createCloudStorage } from '../services/storageService';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -8,15 +9,30 @@ interface AdminPanelProps {
   allFlavors: Flavor[];
   onUpdateFlavor: (flavor: Flavor) => void;
   onAddFlavor: (flavor: Flavor) => void;
+  onResetFlavors: () => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, allFlavors, onUpdateFlavor, onAddFlavor }) => {
-  const [activeTab, setActiveTab] = useState<'stock' | 'add'>('stock');
+const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, allFlavors, onUpdateFlavor, onAddFlavor, onResetFlavors }) => {
+  const [activeTab, setActiveTab] = useState<'stock' | 'add' | 'cloud'>('stock');
   
   // Add Flavor State
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState<FlavorCategory>(FlavorCategory.FRUIT);
   const [newColor, setNewColor] = useState('#10b981');
+
+  // Cloud State
+  const [currentCloudId, setCurrentCloudId] = useState<string>('');
+  const [inputCloudId, setInputCloudId] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [isCreatingCloud, setIsCreatingCloud] = useState(false);
+
+  useEffect(() => {
+      if (isOpen) {
+          const id = getCloudId();
+          setCurrentCloudId(id || '');
+          setInputCloudId(id || '');
+      }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -35,6 +51,36 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, allFlavors, on
     onAddFlavor(newFlavor);
     setNewName('');
     alert('Вкус добавлен!');
+  };
+
+  const handleCreateCloud = async () => {
+    setIsCreatingCloud(true);
+    try {
+        const newId = await createCloudStorage(allFlavors);
+        setCurrentCloudId(newId);
+        setInputCloudId(newId);
+        // Trigger a reload/refetch in the main app effectively
+        window.location.reload(); 
+    } catch (e) {
+        alert("Ошибка создания облака");
+    } finally {
+        setIsCreatingCloud(false);
+    }
+  };
+
+  const handleConnectCloud = () => {
+      if (inputCloudId.trim()) {
+          setCloudId(inputCloudId.trim());
+          setCurrentCloudId(inputCloudId.trim());
+          alert("Подключено! Приложение перезагрузится для синхронизации.");
+          window.location.reload();
+      }
+  };
+
+  const handleCopy = () => {
+      navigator.clipboard.writeText(currentCloudId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -58,18 +104,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, allFlavors, on
         </div>
 
         {/* Tabs */}
-        <div className="flex p-2 gap-2 bg-slate-800/50">
+        <div className="flex p-2 gap-2 bg-slate-800/50 overflow-x-auto">
           <button 
             onClick={() => setActiveTab('stock')}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'stock' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-2 ${activeTab === 'stock' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
           >
-            Стоп-лист / Наличие
+            Наличие
           </button>
           <button 
             onClick={() => setActiveTab('add')}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'add' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-2 ${activeTab === 'add' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
           >
-            Добавить новый вкус
+            Добавить
+          </button>
+          <button 
+            onClick={() => setActiveTab('cloud')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-2 ${activeTab === 'cloud' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
+          >
+            Облако
           </button>
         </div>
 
@@ -108,6 +160,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, allFlavors, on
                   </button>
                 </div>
               ))}
+
+              <div className="mt-8 pt-6 border-t border-slate-800">
+                 <button 
+                    onClick={onResetFlavors}
+                    className="w-full py-3 rounded-xl border border-slate-700 text-slate-400 hover:bg-red-900/20 hover:text-red-400 hover:border-red-900/50 transition-all flex items-center justify-center gap-2 text-sm"
+                 >
+                    <RotateCcw size={16} />
+                    Сбросить меню к заводским настройкам
+                 </button>
+              </div>
             </div>
           )}
 
@@ -159,6 +221,66 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose, allFlavors, on
                  Сохранить в базу
                </button>
             </form>
+          )}
+
+          {activeTab === 'cloud' && (
+             <div className="space-y-6 py-4">
+                <div className="bg-blue-900/20 border border-blue-500/30 rounded-xl p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
+                            <Cloud size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-white">Глобальная Синхронизация</h3>
+                    </div>
+                    <p className="text-sm text-slate-400 mb-4">
+                        Позволяет синхронизировать наличие и список вкусов между всеми устройствами заведения.
+                    </p>
+                    
+                    {currentCloudId ? (
+                        <div className="bg-slate-950 rounded-lg p-3 border border-slate-800">
+                             <p className="text-xs text-slate-500 mb-1">Ваш ID Облака (введите на других устройствах):</p>
+                             <div className="flex gap-2">
+                                <code className="flex-1 bg-slate-900 p-2 rounded border border-slate-800 font-mono text-emerald-400 text-sm truncate">
+                                    {currentCloudId}
+                                </code>
+                                <button 
+                                    onClick={handleCopy}
+                                    className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded transition-colors"
+                                >
+                                    {copied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+                                </button>
+                             </div>
+                        </div>
+                    ) : (
+                        <button 
+                            onClick={handleCreateCloud}
+                            disabled={isCreatingCloud}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-colors"
+                        >
+                            {isCreatingCloud ? "Создание..." : "Создать новое хранилище"}
+                        </button>
+                    )}
+                </div>
+
+                <div className="border-t border-slate-800 pt-6">
+                    <h4 className="font-bold text-white mb-4">Подключиться к существующему</h4>
+                    <div className="flex gap-2">
+                        <input 
+                            type="text" 
+                            placeholder="Введите ID хранилища"
+                            value={inputCloudId}
+                            onChange={(e) => setInputCloudId(e.target.value)}
+                            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-blue-500 focus:outline-none font-mono text-sm"
+                        />
+                        <button 
+                            onClick={handleConnectCloud}
+                            className="bg-slate-700 hover:bg-slate-600 text-white px-4 rounded-xl font-bold transition-colors"
+                        >
+                            Подключить
+                        </button>
+                    </div>
+                </div>
+             </div>
           )}
         </div>
       </div>
