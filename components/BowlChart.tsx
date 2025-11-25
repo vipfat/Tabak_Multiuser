@@ -8,6 +8,24 @@ interface BowlChartProps {
   totalWeight: number;
 }
 
+// Helper to determine best text color (black or white) based on background hex
+const getContrastYIQ = (hexcolor: string) => {
+    if (!hexcolor) return '#ffffff';
+    // Remove hash
+    const hex = hexcolor.replace("#", "");
+    
+    // Parse rgb
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    
+    // Calculate YIQ ratio
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    
+    // Returns black for bright colors, white for dark colors
+    return (yiq >= 128) ? '#000000' : '#ffffff';
+};
+
 const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight }) => {
   // Prepare data: Add an "Empty" slice if bowl isn't full
   const remaining = MAX_BOWL_SIZE - totalWeight;
@@ -32,9 +50,21 @@ const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight }) => {
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
     const y = cy + radius * Math.sin(-midAngle * RADIAN);
-  
+    
+    // Determine readable text color
+    const textColor = getContrastYIQ(item.color);
+
     return (
-      <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={12} fontWeight="bold">
+      <text 
+        x={x} 
+        y={y} 
+        fill={textColor} 
+        textAnchor="middle" 
+        dominantBaseline="central" 
+        fontSize={14} 
+        fontWeight="bold"
+        style={{ pointerEvents: 'none' }}
+      >
         {`${(percent * 100).toFixed(0)}%`}
       </text>
     );

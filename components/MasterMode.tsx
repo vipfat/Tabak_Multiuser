@@ -40,8 +40,15 @@ const MasterMode: React.FC<MasterModeProps> = ({ isOpen, onClose, mix, totalWeig
             {mix.map(item => (
                 <div key={item.id} className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800">
                     <div className="flex items-center gap-4">
-                        <div className="w-6 h-6 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-xl font-bold text-white">{item.name}</span>
+                        <div className="w-6 h-6 rounded-full shrink-0 border border-slate-700" style={{ backgroundColor: item.color }} />
+                        <div>
+                            <div className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-0.5">
+                                {item.brand}
+                            </div>
+                            <span className="text-xl font-bold text-white leading-none block">
+                                {item.name}
+                            </span>
+                        </div>
                     </div>
                     <div className="text-2xl font-mono text-emerald-400 font-bold">
                         {item.grams}г
