@@ -39,30 +39,27 @@ export const getSavedVenue = (): Venue | null => {
 
 interface FetchResult {
     flavors: Flavor[];
-    pin: string | null;
     brands: string[];
 }
 
 // Fetch flavors and PIN from Supabase
 export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult> => {
     if (!venueId || !isDatabaseConfigured()) {
-        return { flavors: AVAILABLE_FLAVORS, pin: null, brands: [] };
+        return { flavors: AVAILABLE_FLAVORS, brands: [] };
     }
 
     const client = getDatabaseClient();
     if (!client) {
-        return { flavors: AVAILABLE_FLAVORS, pin: null, brands: [] };
+        return { flavors: AVAILABLE_FLAVORS, brands: [] };
     }
 
     try {
-        const [{ data: flavorsData, error: flavorsError }, { data: venueData, error: venueError }, { data: brandsData, error: brandsError }] = await Promise.all([
+        const [{ data: flavorsData, error: flavorsError }, { data: brandsData, error: brandsError }] = await Promise.all([
             client.from('flavors').select('*').eq('venue_id', venueId).order('name', { ascending: true }),
-            client.from('venues').select('admin_pin').eq('id', venueId).maybeSingle(),
             client.from('brands').select('name').eq('venue_id', venueId).order('name', { ascending: true })
         ]);
 
         if (flavorsError) throw flavorsError;
-        if (venueError) throw venueError;
         if (brandsError) throw brandsError;
 
         const flavors: Flavor[] = (flavorsData || []).map((row: any) => ({
@@ -74,13 +71,12 @@ export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult
             isAvailable: row.is_available !== false,
         }));
 
-        const pin: string | null = venueData?.admin_pin ? String(venueData.admin_pin).trim() : null;
         const brands: string[] = (brandsData || []).map((b: any) => String(b.name || '').trim()).filter(Boolean);
 
-        return { flavors, pin, brands };
+        return { flavors, brands };
     } catch (e: any) {
         console.error('Error fetching from database:', e);
-        return { flavors: [], pin: null, brands: [] };
+        return { flavors: [], brands: [] };
     }
 };
 
@@ -169,6 +165,62 @@ export const saveGlobalPin = async (pin: string, venueId?: string | null): Promi
     }
 
     return { success: true, message: 'Пин сохранён в базе' };
+};
+
+export const verifyAdminPin = async (pin: string, venueId?: string | null): Promise<boolean> => {
+    if (!venueId || !pin) return false;
+    if (!isDatabaseConfigured()) return pin === '0000';
+
+    const client = getDatabaseClient();
+    if (!client) return false;
+
+    try {
+        const { data, error } = await client
+            .from('venues')
+            .select('id')
+            .eq('id', venueId)
+            .eq('admin_pin', pin)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        return Boolean(data?.id);
+    } catch (e) {
+        console.error('Failed to verify pin', e);
+        return false;
+    }
+};
+
+export const updateAdminPin = async (currentPin: string, newPin: string, venueId?: string | null): Promise<SaveResult> => {
+    if (!venueId) {
+        return { success: false, message: 'Не выбрано заведение' };
+    }
+
+    const client = getDatabaseClient();
+    if (!client) {
+        return { success: false, message: 'База данных не настроена' };
+    }
+
+    try {
+        const { data, error } = await client
+            .from('venues')
+            .update({ admin_pin: newPin })
+            .eq('id', venueId)
+            .eq('admin_pin', currentPin)
+            .select('id')
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+            return { success: false, message: 'Текущий ПИН неверный' };
+        }
+
+        return { success: true, message: 'ПИН обновлен' };
+    } catch (e: any) {
+        console.error('Failed to update pin', e);
+        return { success: false, message: e?.message || 'Не удалось обновить ПИН' };
+    }
 };
 
 /**
