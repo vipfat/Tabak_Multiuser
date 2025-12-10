@@ -3,9 +3,6 @@ import { Flavor, FlavorBrand } from './types';
 
 export const MAX_BOWL_SIZE = 18; // Grams
 
-// The fixed URL provided by the user
-export const DEFAULT_GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw-qWRKYW_riE99TFaUVDq2IYnbtGA20r3r_yjTizlEoaLq6HvSjv9xeG5IlNC6eyeFXQ/exec";
-
 export const AVAILABLE_FLAVORS: Flavor[] = [
   // Musthave
   { 
