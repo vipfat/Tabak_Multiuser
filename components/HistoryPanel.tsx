@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TelegramUser, SavedMix } from '../types';
-import { X, Heart, Clock, Trash2, ArrowRightCircle, Search } from 'lucide-react';
+import { X, Heart, Clock, Trash2, ArrowRightCircle, Search, MapPin } from 'lucide-react';
 import { getHistory, toggleFavoriteMix, deleteMix } from '../services/storageService';
 
 interface HistoryPanelProps {
@@ -104,8 +104,20 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, user, onLo
                         <h3 className="font-bold text-white text-lg line-clamp-1">
                             {mix.name || 'Микс без названия'}
                         </h3>
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
                             {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(mix.timestamp)}
+                            {mix.venue ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 bg-slate-800 px-2 py-1 rounded-lg">
+                                <MapPin size={12} className="text-emerald-400" />
+                                <span className="font-semibold text-slate-200">{mix.venue.title}</span>
+                                <span className="text-slate-500">{mix.venue.city}</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg">
+                                <MapPin size={12} className="text-slate-600" />
+                                <span>Заведение не указано</span>
+                              </span>
+                            )}
                         </span>
                     </div>
                     <button 
