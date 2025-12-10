@@ -51,10 +51,12 @@ const App: React.FC = () => {
   const [isFetchingPin, setIsFetchingPin] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [adminPin, setAdminPin] = useState('0000'); // Will be updated from cloud
-  
+
   // PIN Change Logic
   const [lockClickCount, setLockClickCount] = useState(0);
   const [isChangingPin, setIsChangingPin] = useState(false);
+  const [changePinStep, setChangePinStep] = useState<'verify' | 'new'>('verify');
+  const [currentPinInput, setCurrentPinInput] = useState('');
   const [newPin, setNewPin] = useState('');
   const [savePinStatus, setSavePinStatus] = useState('');
 
@@ -133,6 +135,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (lockClickCount >= 12) {
         setIsChangingPin(true);
+        setChangePinStep('verify');
+        setCurrentPinInput('');
+        setNewPin('');
+        setSavePinStatus('');
+        setPinInput('');
         setLockClickCount(0);
     }
   }, [lockClickCount]);
@@ -174,8 +181,25 @@ const App: React.FC = () => {
     }
   };
 
+  const handleVerifyOldPinSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      const currentPin = adminPin || "0000";
+
+      if (currentPinInput === currentPin) {
+          setChangePinStep('new');
+          setCurrentPinInput('');
+          setSavePinStatus('');
+      } else {
+          alert("Текущий ПИН неверный");
+          setCurrentPinInput('');
+      }
+  };
+
   const handleChangePinSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (changePinStep !== 'new') {
+          return;
+      }
       if (newPin.length !== 4) {
           alert("ПИН должен быть 4 цифры");
           return;
@@ -193,8 +217,10 @@ const App: React.FC = () => {
           setSavePinStatus('Сохранено!');
           setTimeout(() => {
               setIsChangingPin(false);
+              setChangePinStep('verify');
               setShowPinPad(false);
               setNewPin('');
+              setCurrentPinInput('');
               setSavePinStatus('');
               setLockClickCount(0);
           }, 1000);
@@ -319,8 +345,11 @@ const App: React.FC = () => {
       setPinInput('');
       setLockClickCount(0);
       setIsChangingPin(false);
+      setChangePinStep('verify');
+      setCurrentPinInput('');
       setNewPin('');
       setIsFetchingPin(false);
+      setSavePinStatus('');
   }
 
   return (
@@ -593,41 +622,75 @@ const App: React.FC = () => {
                     </form>
                 ) : (
                     // Change PIN Mode (Activated after 12 lock clicks)
-                    <form onSubmit={handleChangePinSubmit}>
-                        <RefreshCcw className="mx-auto text-indigo-400 mb-4 animate-spin-slow" size={32} />
-                        <p className="text-white mb-2 font-bold">Смена Глобального PIN</p>
-                        <p className="text-xs text-slate-400 mb-4">Новый ПИН будет сохранен в ячейке H2 таблицы.</p>
-                        
-                        <input 
-                            autoFocus
-                            type="text" 
-                            pattern="\d*"
-                            maxLength={4}
-                            placeholder="0000" 
-                            className="w-full bg-indigo-900/20 text-center text-2xl tracking-widest py-3 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-indigo-500/30"
-                            value={newPin}
-                            onChange={(e) => setNewPin(e.target.value)}
-                        />
-                        
-                        {savePinStatus && <p className="text-xs text-indigo-300 mb-2 animate-pulse">{savePinStatus}</p>}
+                    changePinStep === 'verify' ? (
+                        <form onSubmit={handleVerifyOldPinSubmit}>
+                            <Lock className="mx-auto text-indigo-400 mb-4" size={32} />
+                            <p className="text-white mb-2 font-bold">Подтверждение старого PIN</p>
+                            <p className="text-xs text-slate-400 mb-4">Перед сменой нужно ввести текущий код.</p>
 
-                        <div className="flex gap-2">
-                             <button 
-                                type="button" 
-                                onClick={handleClosePinPad} 
-                                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
-                            >
-                                Отмена
-                            </button>
-                            <button 
-                                type="submit" 
-                                disabled={!!savePinStatus && savePinStatus !== 'Ошибка!'}
-                                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors"
-                            >
-                                Сохранить
-                            </button>
-                        </div>
-                    </form>
+                            <input
+                                autoFocus
+                                type="password"
+                                maxLength={4}
+                                placeholder="Текущий PIN"
+                                className="w-full bg-indigo-900/20 text-center text-2xl tracking-widest py-3 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-indigo-500/30"
+                                value={currentPinInput}
+                                onChange={(e) => setCurrentPinInput(e.target.value)}
+                            />
+
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleClosePinPad}
+                                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors"
+                                >
+                                    Продолжить
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleChangePinSubmit}>
+                            <RefreshCcw className="mx-auto text-indigo-400 mb-4 animate-spin-slow" size={32} />
+                            <p className="text-white mb-2 font-bold">Смена Глобального PIN</p>
+                            <p className="text-xs text-slate-400 mb-4">Введите новый ПИН после проверки старого.</p>
+
+                            <input
+                                autoFocus
+                                type="text"
+                                pattern="\d*"
+                                maxLength={4}
+                                placeholder="0000"
+                                className="w-full bg-indigo-900/20 text-center text-2xl tracking-widest py-3 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-indigo-500/30"
+                                value={newPin}
+                                onChange={(e) => setNewPin(e.target.value)}
+                            />
+
+                            {savePinStatus && <p className="text-xs text-indigo-300 mb-2 animate-pulse">{savePinStatus}</p>}
+
+                            <div className="flex gap-2">
+                                 <button
+                                    type="button"
+                                    onClick={handleClosePinPad}
+                                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!!savePinStatus && savePinStatus !== 'Ошибка!'}
+                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors"
+                                >
+                                    Сохранить
+                                </button>
+                            </div>
+                        </form>
+                    )
                 )}
             </div>
         </div>
