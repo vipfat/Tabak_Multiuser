@@ -1,8 +1,9 @@
-import { SavedMix, MixIngredient, Flavor, FlavorBrand } from '../types';
+import { SavedMix, MixIngredient, Flavor, FlavorBrand, Venue } from '../types';
 import { AVAILABLE_FLAVORS, DEFAULT_GOOGLE_SCRIPT_URL } from '../constants';
 
 const STORAGE_KEY = 'hookah_alchemist_history_v2';
 const GOOGLE_SCRIPT_URL_KEY = 'hookah_alchemist_gscript_url';
+const SELECTED_VENUE_KEY = 'hookah_alchemist_selected_venue';
 
 // Robust ID generator with fallback
 const generateId = (): string => {
@@ -32,6 +33,23 @@ export const setGoogleScriptUrl = (url: string) => {
         localStorage.removeItem(GOOGLE_SCRIPT_URL_KEY);
     } else {
         localStorage.setItem(GOOGLE_SCRIPT_URL_KEY, url.trim());
+    }
+};
+
+export const saveSelectedVenue = (venue: Venue) => {
+    try {
+        localStorage.setItem(SELECTED_VENUE_KEY, JSON.stringify(venue));
+    } catch (e) {
+        console.error('Failed to persist venue', e);
+    }
+};
+
+export const getSavedVenue = (): Venue | null => {
+    try {
+        const raw = localStorage.getItem(SELECTED_VENUE_KEY);
+        return raw ? (JSON.parse(raw) as Venue) : null;
+    } catch (e) {
+        return null;
     }
 };
 

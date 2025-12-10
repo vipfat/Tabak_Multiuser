@@ -42,3 +42,12 @@ export interface SavedMix {
   name: string; // User provided name
   isFavorite: boolean;
 }
+
+export interface Venue {
+  id: string;
+  title: string;
+  city: string;
+  logo: string;
+  scriptUrl: string;
+  visible: boolean;
+}
