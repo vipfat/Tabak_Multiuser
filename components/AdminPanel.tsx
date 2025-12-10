@@ -79,7 +79,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // --- ACTIONS ---
 
-  const handleAddFlavorSubmit = (e: React.FormEvent) => {
+  const handleAddFlavorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName) return;
 
@@ -97,12 +97,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       isAvailable: true
     };
 
+    const updatedFlavors = [newFlavor, ...allFlavors];
     onAddFlavor(newFlavor);
-    
+
+    if (activeVenueId) {
+        try {
+            setSyncStatus({ type: 'loading', msg: 'Сохранение нового вкуса...' });
+            const result = await saveFlavorsAndBrands(updatedFlavors, customBrands, activeVenueId);
+
+            if (result.normalizedFlavors && setAllFlavors) {
+                setAllFlavors(result.normalizedFlavors);
+            }
+
+            setSyncStatus({ type: result.success ? 'success' : 'error', msg: result.message });
+        } catch (error: any) {
+            setSyncStatus({ type: 'error', msg: `Ошибка: ${error?.message || 'Не удалось сохранить вкус'}` });
+        }
+    }
+
     // Reset form
     setNewName('');
     setNewDescription('');
-    alert('Вкус добавлен в локальный список. Не забудьте нажать "Сохранить все" во вкладке Наличие.');
+    setBrandSelectValue('');
+
+    alert('Вкус добавлен и сохранён');
   };
 
   const handleAddBrand = (e: React.FormEvent) => {
