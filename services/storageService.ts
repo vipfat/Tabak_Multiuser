@@ -20,11 +20,6 @@ const generateId = (): string => {
     });
 };
 
-const isValidUuid = (value?: string | null) => {
-    if (!value || typeof value !== 'string') return false;
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-};
-
 export const saveSelectedVenue = (venue: Venue) => {
     try {
         localStorage.setItem(SELECTED_VENUE_KEY, JSON.stringify(venue));
@@ -107,10 +102,6 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
     }
 
     const validBrands = brands.filter(b => b && b.trim() !== "");
-    const normalizedFlavors: Flavor[] = flavors.map(f => ({
-        ...f,
-        id: isValidUuid(f.id) ? f.id : generateId(),
-    }));
 
     try {
         // Replace venue flavors and brands with latest snapshot
@@ -119,9 +110,9 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
 
         await Promise.all([deleteFlavors, deleteBrands]);
 
-        if (normalizedFlavors.length > 0) {
+        if (flavors.length > 0) {
             const { error: flavorsError } = await client.from('flavors').upsert(
-                normalizedFlavors.map(f => ({
+                flavors.map(f => ({
                     id: f.id,
                     venue_id: venueId,
                     name: f.name,
@@ -142,7 +133,7 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
             if (brandsError) throw brandsError;
         }
 
-        return { success: true, message: 'Данные сохранены в базе', normalizedFlavors };
+        return { success: true, message: 'Данные сохранены в базе' };
     } catch (error: any) {
         console.error('Failed to save flavors to database', error);
         return { success: false, message: error?.message || 'Не удалось сохранить данные' };
