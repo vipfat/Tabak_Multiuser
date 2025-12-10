@@ -9,8 +9,7 @@ import {
   fetchFlavors,
   saveGlobalPin,
   getSavedVenue,
-  saveSelectedVenue,
-  setGoogleScriptUrl
+  saveSelectedVenue
 } from './services/storageService';
 import { fetchVenues } from './services/venueService';
 import BowlChart from './components/BowlChart';
@@ -77,7 +76,7 @@ const App: React.FC = () => {
       if (!selectedVenue) return;
       setIsLoading(true);
       try {
-          const { flavors, pin, brands } = await fetchFlavors();
+          const { flavors, pin, brands } = await fetchFlavors(selectedVenue.id);
           if (flavors && flavors.length > 0) {
               setAllFlavors(flavors);
           }
@@ -103,7 +102,6 @@ const App: React.FC = () => {
     const storedVenue = getSavedVenue();
     if (storedVenue) {
         setSelectedVenue(storedVenue);
-        setGoogleScriptUrl(storedVenue.scriptUrl);
     }
 
     loadVenues();
@@ -155,7 +153,7 @@ const App: React.FC = () => {
       setIsFetchingPin(true);
       try {
           // Force fetch to get the latest PIN from Cloud
-          const { pin } = await fetchFlavors();
+          const { pin } = await fetchFlavors(selectedVenue?.id);
           if (pin && pin !== "undefined") {
               console.log("Refreshed PIN from cloud:", pin);
               setAdminPin(pin);
@@ -195,7 +193,7 @@ const App: React.FC = () => {
       setAdminPin(newPin);
       
       // 2. Save ONLY PIN to Cloud (Action: savePin)
-      const result = await saveGlobalPin(newPin);
+      const result = await saveGlobalPin(newPin, selectedVenue?.id);
       
       if (result.success) {
           setSavePinStatus('Сохранено!');
@@ -217,7 +215,6 @@ const App: React.FC = () => {
   const handleSelectVenue = (venue: Venue) => {
     setSelectedVenue(venue);
     saveSelectedVenue(venue);
-    setGoogleScriptUrl(venue.scriptUrl);
 
     setIsVenueSelectorOpen(false);
     setMix([]);
@@ -542,6 +539,7 @@ const App: React.FC = () => {
         customBrands={customBrands}
         setCustomBrands={setCustomBrands}
         currentPin={adminPin}
+        activeVenueId={selectedVenue?.id}
       />
 
       {/* Secret PIN Modal */}
