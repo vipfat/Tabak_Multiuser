@@ -2,8 +2,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Flavor, FlavorBrand } from '../types';
 import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle } from 'lucide-react';
-import { saveFlavorsAndBrands, getGoogleScriptUrl, setGoogleScriptUrl, fetchFlavors } from '../services/storageService';
-import { DEFAULT_GOOGLE_SCRIPT_URL } from '../constants';
+import { saveFlavorsAndBrands, fetchFlavors } from '../services/storageService';
+
+const generateFlavorId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {
+      // Fallback
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -16,22 +29,23 @@ interface AdminPanelProps {
   customBrands?: string[];
   setCustomBrands?: (brands: string[]) => void;
   currentPin?: string;
+  activeVenueId?: string;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ 
-    isOpen, 
-    onClose, 
-    allFlavors, 
-    onUpdateFlavor, 
-    onAddFlavor, 
+const AdminPanel: React.FC<AdminPanelProps> = ({
+    isOpen,
+    onClose,
+    allFlavors,
+    onUpdateFlavor,
+    onAddFlavor,
     onResetFlavors,
     setAllFlavors,
     customBrands = [],
     setCustomBrands,
-    currentPin = "0000"
+    currentPin = "0000",
+    activeVenueId,
 }) => {
   const [activeTab, setActiveTab] = useState<'stock' | 'add' | 'brands' | 'settings'>('stock');
-  const [scriptUrl, setScriptUrlState] = useState('');
   const [syncStatus, setSyncStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error', msg: string }>({ type: 'idle', msg: '' });
   
   // Stock Tab Filters
@@ -48,7 +62,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-        setScriptUrlState(getGoogleScriptUrl());
         setSyncStatus({ type: 'idle', msg: '' });
     }
   }, [isOpen]);
@@ -90,7 +103,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const newFlavor: Flavor = {
-      id: `custom_${Date.now()}`,
+      id: generateFlavorId(),
       name: newName,
       brand: brandSelectValue,
       description: newDescription,
@@ -154,17 +167,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleSyncToCloud = async () => {
-      if (!scriptUrl) {
-          alert("Настройте URL в настройках");
+      if (!activeVenueId) {
+          alert("Выберите заведение перед сохранением");
           setActiveTab('settings');
           return;
       }
 
       try {
         setSyncStatus({ type: 'loading', msg: 'Сохранение...' });
-        
+
         // Send ONLY Flavors and Brands. DO NOT SEND PIN.
-        const result = await saveFlavorsAndBrands(allFlavors, customBrands);
+        const result = await saveFlavorsAndBrands(allFlavors, customBrands, activeVenueId);
         
         if (result.success) {
             setSyncStatus({ type: 'success', msg: result.message });
@@ -178,14 +191,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleLoadFromCloud = async () => {
       try {
-        if (!scriptUrl) {
-            alert("Настройте URL");
+        if (!activeVenueId) {
+            alert("Выберите заведение, чтобы загрузить меню");
             return;
         }
 
         setSyncStatus({ type: 'loading', msg: 'Загрузка...' });
-        
-        const { flavors, pin, brands } = await fetchFlavors();
+
+        const { flavors, pin, brands } = await fetchFlavors(activeVenueId);
         
         if (setAllFlavors) {
             if (flavors.length > 0) {
@@ -275,18 +288,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   
                   <div className="flex gap-2 mb-3">
-                      <button 
+                      <button
                         onClick={handleLoadFromCloud}
-                        disabled={syncStatus.type === 'loading' || !scriptUrl}
+                        disabled={syncStatus.type === 'loading' || !activeVenueId}
                         className="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white text-xs font-bold py-3 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors border border-slate-700"
                       >
                          {syncStatus.type === 'loading' && syncStatus.msg.includes('Загрузка') ? <RotateCcw className="animate-spin" size={14} /> : <DownloadCloud size={14} />}
                          Получить
                       </button>
 
-                      <button 
+                      <button
                         onClick={handleSyncToCloud}
-                        disabled={syncStatus.type === 'loading' || !scriptUrl}
+                        disabled={syncStatus.type === 'loading' || !activeVenueId}
                         className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold py-3 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-lg shadow-indigo-900/20"
                       >
                          {syncStatus.type === 'loading' && syncStatus.msg.includes('Сохранение') ? <RotateCcw className="animate-spin" size={14} /> : <UploadCloud size={14} />}
@@ -485,27 +498,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* SETTINGS TAB */}
           {activeTab === 'settings' && (
               <div className="space-y-4 py-2">
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                      <label className="block text-xs uppercase font-bold text-slate-500 mb-2">
-                          Google Apps Script URL
-                      </label>
-                      <input 
-                        type="text"
-                        value={scriptUrl}
-                        onChange={(e) => setScriptUrlState(e.target.value)}
-                        placeholder={DEFAULT_GOOGLE_SCRIPT_URL}
-                        className="w-full bg-slate-800 text-slate-200 text-xs p-3 rounded-lg border border-slate-700 focus:border-indigo-500 outline-none break-all"
-                      />
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Cloud size={16} className="text-indigo-400" />
+                          Хранилище Supabase
+                      </h3>
+                      <p className="text-sm text-slate-400">
+                          Синхронизация теперь работает через таблицы базы данных. Выберите заведение, чтобы работать со своими данными.
+                      </p>
+                      <div className="bg-slate-900 rounded-lg p-3 border border-slate-800 text-xs text-slate-300">
+                          <p className="font-mono text-emerald-300">Активное заведение: {activeVenueId || 'не выбрано'}</p>
+                          <p className="mt-1">URL и ключ Supabase задаются в переменных окружения VITE_SUPABASE_URL и VITE_SUPABASE_ANON_KEY.</p>
+                      </div>
                   </div>
-                  <button 
-                    onClick={() => {
-                        setGoogleScriptUrl(scriptUrl);
-                        alert("URL сохранен");
-                    }}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-xl font-bold transition-colors"
-                  >
-                      Сохранить URL
-                  </button>
+                  <div className="bg-amber-900/30 border border-amber-700/30 text-amber-100 rounded-xl p-3 text-xs">
+                      ПИН коды хранятся рядом с записью заведения (поле <code>admin_pin</code>). Сохранение вкусов не меняет ПИН, чтобы заведения могли управлять доступом самостоятельно.
+                  </div>
               </div>
           )}
         </div>
