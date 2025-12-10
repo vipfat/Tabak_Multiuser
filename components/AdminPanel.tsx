@@ -89,7 +89,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const newFlavor: Flavor = {
-      id: `custom_${Date.now()}`,
+      id: generateFlavorId(),
       name: newName,
       brand: brandSelectValue,
       description: newDescription,
