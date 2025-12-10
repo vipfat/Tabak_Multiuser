@@ -231,18 +231,21 @@ export const saveGlobalPin = async (pin: string): Promise<SaveResult> => {
  * HISTORY MANAGEMENT (Local User Storage)
  */
 
-export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], name: string): SavedMix => {
+export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], name: string, venue?: Venue | null): SavedMix => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const allMixes: SavedMix[] = raw ? JSON.parse(raw) : [];
-    
+
+    const sanitizedIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
+
     const newMix: SavedMix = {
       id: generateId(),
       userId,
       timestamp: Date.now(),
-      ingredients,
+      ingredients: sanitizedIngredients,
       name: name || "Мой микс",
-      isFavorite: false
+      isFavorite: false,
+      venue,
     };
 
     const updatedHistory = [newMix, ...allMixes];
@@ -250,13 +253,15 @@ export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], n
     return newMix;
   } catch (e) {
     console.error("Error saving mix:", e);
+    const fallbackIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
     return {
         id: generateId(),
         userId,
         timestamp: Date.now(),
-        ingredients,
+        ingredients: fallbackIngredients,
         name: name || "Мой микс",
-        isFavorite: false
+        isFavorite: false,
+        venue,
     };
   }
 };

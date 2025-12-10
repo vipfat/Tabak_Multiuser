@@ -22,6 +22,7 @@ export interface Flavor {
 
 export interface MixIngredient extends Flavor {
   grams: number;
+  isMissing?: boolean; // Flag for ingredients missing from current venue
 }
 
 // --- Telegram & History Types ---
@@ -41,6 +42,7 @@ export interface SavedMix {
   ingredients: MixIngredient[];
   name: string; // User provided name
   isFavorite: boolean;
+  venue?: Venue | null;
 }
 
 export interface Venue {

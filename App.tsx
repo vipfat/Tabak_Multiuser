@@ -269,27 +269,38 @@ const App: React.FC = () => {
 
   const handleSaveMix = () => {
     if (!user || mix.length === 0) return;
-    
+
     let finalName = mixName.trim();
     if (!finalName) {
         finalName = prompt("Назовите ваш микс:", "Мой вкусный микс") || "Микс без названия";
         setMixName(finalName);
     }
 
-    saveMixToHistory(user.id, mix, finalName);
+    const sanitizedMix: MixIngredient[] = mix.map(({ isMissing, ...rest }) => ({ ...rest }));
+
+    saveMixToHistory(user.id, sanitizedMix, finalName, selectedVenue);
     alert("Микс сохранен в историю!");
   };
 
   const handleShowMaster = () => {
     if (mix.length === 0) return;
     if (user) {
-        saveMixToHistory(user.id, mix, mixName || "Заказ мастеру");
+        const sanitizedMix: MixIngredient[] = mix.map(({ isMissing, ...rest }) => ({ ...rest }));
+        saveMixToHistory(user.id, sanitizedMix, mixName || "Заказ мастеру", selectedVenue);
     }
     setIsMasterModeOpen(true);
   };
 
   const handleLoadFromHistory = (savedMix: SavedMix) => {
-    setMix(savedMix.ingredients);
+    const mappedIngredients = savedMix.ingredients.map((ing) => {
+        const current = allFlavors.find(f => f.id === ing.id);
+        if (current) {
+            return { ...current, grams: ing.grams, isMissing: !current.isAvailable } as MixIngredient;
+        }
+        return { ...ing, isAvailable: false, isMissing: true } as MixIngredient;
+    });
+
+    setMix(mappedIngredients);
     setMixName(savedMix.name);
     setIsHistoryOpen(false);
   };
@@ -508,13 +519,14 @@ const App: React.FC = () => {
 
       {/* Master Mode Fullscreen */}
       {user && (
-        <MasterMode 
+        <MasterMode
             isOpen={isMasterModeOpen}
             onClose={() => setIsMasterModeOpen(false)}
             mix={mix}
             totalWeight={totalWeight}
             user={user}
             mixName={mixName}
+            venue={selectedVenue}
         />
       )}
 
