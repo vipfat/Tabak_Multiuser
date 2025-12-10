@@ -7,10 +7,9 @@ import { getTelegramUser } from './services/telegramService';
 import {
   saveMixToHistory,
   fetchFlavors,
-  saveGlobalPin,
-  getSavedVenue,
   saveSelectedVenue,
-  setGoogleScriptUrl
+  verifyAdminPin,
+  updateAdminPin
 } from './services/storageService';
 import { fetchVenues } from './services/venueService';
 import BowlChart from './components/BowlChart';
@@ -52,13 +51,15 @@ const App: React.FC = () => {
   const [showPinPad, setShowPinPad] = useState(false);
   const [isFetchingPin, setIsFetchingPin] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [adminPin, setAdminPin] = useState('0000'); // Will be updated from cloud
-  
+
   // PIN Change Logic
   const [lockClickCount, setLockClickCount] = useState(0);
   const [isChangingPin, setIsChangingPin] = useState(false);
+  const [changePinStep, setChangePinStep] = useState<'verify' | 'new'>('verify');
+  const [currentPinInput, setCurrentPinInput] = useState('');
   const [newPin, setNewPin] = useState('');
   const [savePinStatus, setSavePinStatus] = useState('');
+  const [verifiedPin, setVerifiedPin] = useState('');
 
   const loadVenues = useCallback(async () => {
     setIsVenuesLoading(true);
@@ -77,13 +78,9 @@ const App: React.FC = () => {
       if (!selectedVenue) return;
       setIsLoading(true);
       try {
-          const { flavors, pin, brands } = await fetchFlavors();
+          const { flavors, brands } = await fetchFlavors(selectedVenue.id);
           if (flavors && flavors.length > 0) {
               setAllFlavors(flavors);
-          }
-          if (pin && pin !== "undefined") {
-              console.log("Initial PIN Load:", pin);
-              setAdminPin(pin);
           }
           if (brands && brands.length > 0) {
               setCustomBrands(brands);
@@ -99,12 +96,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const tgUser = getTelegramUser();
     setUser(tgUser);
-
-    const storedVenue = getSavedVenue();
-    if (storedVenue) {
-        setSelectedVenue(storedVenue);
-        setGoogleScriptUrl(storedVenue.scriptUrl);
-    }
 
     loadVenues();
   }, [loadVenues]);
@@ -141,6 +132,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (lockClickCount >= 12) {
         setIsChangingPin(true);
+        setChangePinStep('verify');
+        setCurrentPinInput('');
+        setNewPin('');
+        setSavePinStatus('');
+        setPinInput('');
         setLockClickCount(0);
     }
   }, [lockClickCount]);
@@ -152,59 +148,77 @@ const App: React.FC = () => {
   // Logic: Fetch actual PIN from Cloud first, then allow input
   const handleOpenPinPad = async () => {
       setShowPinPad(true);
-      setIsFetchingPin(true);
-      try {
-          // Force fetch to get the latest PIN from Cloud
-          const { pin } = await fetchFlavors();
-          if (pin && pin !== "undefined") {
-              console.log("Refreshed PIN from cloud:", pin);
-              setAdminPin(pin);
-          }
-      } catch (e) {
-          console.error("Error fetching latest pin", e);
-      } finally {
-          setIsFetchingPin(false);
-      }
+      setIsFetchingPin(false);
   };
 
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Strict check
-    const currentPin = adminPin || "0000";
-    if (pinInput === currentPin) {
-        setIsAdminOpen(true);
-        setShowPinPad(false);
-        setPinInput('');
-        setLockClickCount(0);
+    setIsFetchingPin(true);
+
+    const isValid = await verifyAdminPin(pinInput, selectedVenue?.id);
+
+    setIsFetchingPin(false);
+
+    if (isValid) {
+      setIsAdminOpen(true);
+      setShowPinPad(false);
+      setPinInput('');
+      setLockClickCount(0);
     } else {
-        alert("Неверный код");
-        setPinInput('');
+      alert("Неверный код");
+      setPinInput('');
     }
+  };
+
+  const handleVerifyOldPinSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+
+      setIsFetchingPin(true);
+
+      const isValid = await verifyAdminPin(currentPinInput, selectedVenue?.id);
+
+      setIsFetchingPin(false);
+
+      if (isValid) {
+        setVerifiedPin(currentPinInput);
+        setChangePinStep('new');
+        setCurrentPinInput('');
+        setSavePinStatus('');
+      } else {
+        alert("Текущий ПИН неверный");
+        setCurrentPinInput('');
+      }
   };
 
   const handleChangePinSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (changePinStep !== 'new') {
+          return;
+      }
+      if (!verifiedPin) {
+          alert("Сначала подтвердите текущий ПИН");
+          return;
+      }
       if (newPin.length !== 4) {
           alert("ПИН должен быть 4 цифры");
           return;
       }
       
       setSavePinStatus('Сохранение...');
-      
-      // 1. Update local state immediately
-      setAdminPin(newPin);
-      
-      // 2. Save ONLY PIN to Cloud (Action: savePin)
-      const result = await saveGlobalPin(newPin);
-      
+
+      const result = await updateAdminPin(verifiedPin, newPin, selectedVenue?.id);
+
       if (result.success) {
           setSavePinStatus('Сохранено!');
           setTimeout(() => {
               setIsChangingPin(false);
+              setChangePinStep('verify');
               setShowPinPad(false);
               setNewPin('');
+              setCurrentPinInput('');
               setSavePinStatus('');
               setLockClickCount(0);
+              setVerifiedPin('');
           }, 1000);
       } else {
           setSavePinStatus('Ошибка!');
@@ -217,17 +231,17 @@ const App: React.FC = () => {
   const handleSelectVenue = (venue: Venue) => {
     setSelectedVenue(venue);
     saveSelectedVenue(venue);
-    setGoogleScriptUrl(venue.scriptUrl);
 
     setIsVenueSelectorOpen(false);
     setMix([]);
-    setMixName('');
-    setCustomBrands([]);
-    setAllFlavors(AVAILABLE_FLAVORS);
-    setIsSelectorOpen(false);
-    setIsHistoryOpen(false);
-    setIsMasterModeOpen(false);
-    setIsAdminOpen(false);
+      setMixName('');
+      setCustomBrands([]);
+      setAllFlavors(AVAILABLE_FLAVORS);
+      setIsSelectorOpen(false);
+      setIsHistoryOpen(false);
+      setIsMasterModeOpen(false);
+      setIsAdminOpen(false);
+      setVerifiedPin('');
   };
 
   const toggleFlavor = (flavor: Flavor) => {
@@ -328,8 +342,12 @@ const App: React.FC = () => {
       setPinInput('');
       setLockClickCount(0);
       setIsChangingPin(false);
+      setChangePinStep('verify');
+      setCurrentPinInput('');
       setNewPin('');
       setIsFetchingPin(false);
+      setSavePinStatus('');
+      setVerifiedPin('');
   }
 
   return (
@@ -531,7 +549,7 @@ const App: React.FC = () => {
       )}
 
       {/* Admin Panel */}
-      <AdminPanel 
+      <AdminPanel
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
         allFlavors={allFlavors}
@@ -541,7 +559,7 @@ const App: React.FC = () => {
         setAllFlavors={setAllFlavors}
         customBrands={customBrands}
         setCustomBrands={setCustomBrands}
-        currentPin={adminPin}
+        activeVenueId={selectedVenue?.id}
       />
 
       {/* Secret PIN Modal */}
@@ -601,41 +619,75 @@ const App: React.FC = () => {
                     </form>
                 ) : (
                     // Change PIN Mode (Activated after 12 lock clicks)
-                    <form onSubmit={handleChangePinSubmit}>
-                        <RefreshCcw className="mx-auto text-indigo-400 mb-4 animate-spin-slow" size={32} />
-                        <p className="text-white mb-2 font-bold">Смена Глобального PIN</p>
-                        <p className="text-xs text-slate-400 mb-4">Новый ПИН будет сохранен в ячейке H2 таблицы.</p>
-                        
-                        <input 
-                            autoFocus
-                            type="text" 
-                            pattern="\d*"
-                            maxLength={4}
-                            placeholder="0000" 
-                            className="w-full bg-indigo-900/20 text-center text-2xl tracking-widest py-3 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-indigo-500/30"
-                            value={newPin}
-                            onChange={(e) => setNewPin(e.target.value)}
-                        />
-                        
-                        {savePinStatus && <p className="text-xs text-indigo-300 mb-2 animate-pulse">{savePinStatus}</p>}
+                    changePinStep === 'verify' ? (
+                        <form onSubmit={handleVerifyOldPinSubmit}>
+                            <Lock className="mx-auto text-indigo-400 mb-4" size={32} />
+                            <p className="text-white mb-2 font-bold">Подтверждение старого PIN</p>
+                            <p className="text-xs text-slate-400 mb-4">Перед сменой нужно ввести текущий код.</p>
 
-                        <div className="flex gap-2">
-                             <button 
-                                type="button" 
-                                onClick={handleClosePinPad} 
-                                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
-                            >
-                                Отмена
-                            </button>
-                            <button 
-                                type="submit" 
-                                disabled={!!savePinStatus && savePinStatus !== 'Ошибка!'}
-                                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors"
-                            >
-                                Сохранить
-                            </button>
-                        </div>
-                    </form>
+                            <input
+                                autoFocus
+                                type="password"
+                                maxLength={4}
+                                placeholder="Текущий PIN"
+                                className="w-full bg-indigo-900/20 text-center text-2xl tracking-widest py-3 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-indigo-500/30"
+                                value={currentPinInput}
+                                onChange={(e) => setCurrentPinInput(e.target.value)}
+                            />
+
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleClosePinPad}
+                                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors"
+                                >
+                                    Продолжить
+                                </button>
+                            </div>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleChangePinSubmit}>
+                            <RefreshCcw className="mx-auto text-indigo-400 mb-4 animate-spin-slow" size={32} />
+                            <p className="text-white mb-2 font-bold">Смена Глобального PIN</p>
+                            <p className="text-xs text-slate-400 mb-4">Введите новый ПИН после проверки старого.</p>
+
+                            <input
+                                autoFocus
+                                type="text"
+                                pattern="\d*"
+                                maxLength={4}
+                                placeholder="0000"
+                                className="w-full bg-indigo-900/20 text-center text-2xl tracking-widest py-3 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 border border-indigo-500/30"
+                                value={newPin}
+                                onChange={(e) => setNewPin(e.target.value)}
+                            />
+
+                            {savePinStatus && <p className="text-xs text-indigo-300 mb-2 animate-pulse">{savePinStatus}</p>}
+
+                            <div className="flex gap-2">
+                                 <button
+                                    type="button"
+                                    onClick={handleClosePinPad}
+                                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!!savePinStatus && savePinStatus !== 'Ошибка!'}
+                                    className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-colors"
+                                >
+                                    Сохранить
+                                </button>
+                            </div>
+                        </form>
+                    )
                 )}
             </div>
         </div>

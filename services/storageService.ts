@@ -1,12 +1,12 @@
 import { SavedMix, MixIngredient, Flavor, FlavorBrand, Venue } from '../types';
-import { AVAILABLE_FLAVORS, DEFAULT_GOOGLE_SCRIPT_URL } from '../constants';
+import { AVAILABLE_FLAVORS } from '../constants';
+import { getDatabaseClient, isDatabaseConfigured } from './supabaseClient';
 
 const STORAGE_KEY = 'hookah_alchemist_history_v2';
-const GOOGLE_SCRIPT_URL_KEY = 'hookah_alchemist_gscript_url';
 const SELECTED_VENUE_KEY = 'hookah_alchemist_selected_venue';
 
 // Robust ID generator with fallback
-const generateId = (): string => {
+export const generateUuid = (): string => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         try {
             return crypto.randomUUID();
@@ -18,22 +18,6 @@ const generateId = (): string => {
         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
-};
-
-/**
- * GOOGLE SHEETS INTEGRATION
- */
-
-export const getGoogleScriptUrl = (): string => {
-    return localStorage.getItem(GOOGLE_SCRIPT_URL_KEY) || DEFAULT_GOOGLE_SCRIPT_URL;
-};
-
-export const setGoogleScriptUrl = (url: string) => {
-    if (!url || url === DEFAULT_GOOGLE_SCRIPT_URL) {
-        localStorage.removeItem(GOOGLE_SCRIPT_URL_KEY);
-    } else {
-        localStorage.setItem(GOOGLE_SCRIPT_URL_KEY, url.trim());
-    }
 };
 
 export const saveSelectedVenue = (venue: Venue) => {
@@ -55,176 +39,188 @@ export const getSavedVenue = (): Venue | null => {
 
 interface FetchResult {
     flavors: Flavor[];
-    pin: string | null;
     brands: string[];
 }
 
-// Fetch flavors from Google Apps Script
-export const fetchFlavors = async (): Promise<FetchResult> => {
-    const url = getGoogleScriptUrl();
-    
-    if (!url) {
-        return { flavors: AVAILABLE_FLAVORS, pin: null, brands: [] };
+// Fetch flavors and PIN from Supabase
+export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult> => {
+    if (!venueId || !isDatabaseConfigured()) {
+        return { flavors: AVAILABLE_FLAVORS, brands: [] };
+    }
+
+    const client = getDatabaseClient();
+    if (!client) {
+        return { flavors: AVAILABLE_FLAVORS, brands: [] };
     }
 
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+        const [{ data: flavorsData, error: flavorsError }, { data: brandsData, error: brandsError }] = await Promise.all([
+            client.from('flavors').select('*').eq('venue_id', venueId).order('name', { ascending: true }),
+            client.from('brands').select('name').eq('venue_id', venueId).order('name', { ascending: true })
+        ]);
 
-        // Cache Buster to prevent browser from serving stale JSON
-        const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}nocache=${Date.now()}`;
+        if (flavorsError) throw flavorsError;
+        if (brandsError) throw brandsError;
 
-        const response = await fetch(fetchUrl, {
-            method: 'GET',
-            redirect: 'follow',
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
+        const flavors: Flavor[] = (flavorsData || []).map((row: any) => ({
+            id: String(row.id || generateUuid()),
+            name: String(row.name || 'Без названия').trim(),
+            brand: String(row.brand || FlavorBrand.OTHER).trim(),
+            description: String(row.description || '').trim(),
+            color: String(row.color || '#cccccc').trim(),
+            isAvailable: row.is_available !== false,
+        }));
 
-        if (!response.ok) {
-            throw new Error(`Ошибка сети: ${response.status}`);
-        }
+        const brands: string[] = (brandsData || []).map((b: any) => String(b.name || '').trim()).filter(Boolean);
 
-        const text = await response.text();
-        
-        // Google Scripts error page detection
-        if (text.trim().startsWith('<') || text.includes('Google Drive')) {
-            throw new Error("Ошибка доступа к скрипту. Проверьте URL.");
-        }
-
-        try {
-            const data = JSON.parse(text);
-            
-            let flavors: Flavor[] = [];
-            let pin: string | null = null;
-            let brands: string[] = [];
-
-            // Handle different potential JSON structures
-            let rawFlavors: any[] = [];
-
-            if (Array.isArray(data)) {
-                // Structure: [ {name: ...}, {name: ...} ]
-                rawFlavors = data;
-            } else if (data && typeof data === 'object') {
-                // Structure: { flavors: [...], pin: "...", brands: [...] }
-                if (Array.isArray(data.flavors)) {
-                    rawFlavors = data.flavors;
-                }
-                // Try to extract PIN and Brands if available
-                if (data.pin) pin = String(data.pin).trim();
-                if (Array.isArray(data.brands)) {
-                    brands = data.brands.map((b: any) => String(b).trim()).filter((b: string) => b.length > 0);
-                }
-            }
-
-            // Process Flavors
-            flavors = rawFlavors.map((f: any) => {
-                // Helper to find property regardless of case (Name vs name)
-                const getProp = (obj: any, keys: string[]) => {
-                    for (const k of keys) {
-                        if (obj[k] !== undefined) return obj[k];
-                    }
-                    return undefined;
-                };
-
-                // Extract values with fallbacks for different capitalizations
-                const rawName = getProp(f, ['name', 'Name', 'NAME']);
-                const rawBrand = getProp(f, ['brand', 'Brand', 'BRAND']);
-                const rawDesc = getProp(f, ['description', 'Description', 'desc', 'Desc']);
-                const rawColor = getProp(f, ['color', 'Color', 'colour']);
-                const rawAvail = getProp(f, ['isAvailable', 'available', 'IsAvailable', 'Available', 'status']);
-                const rawId = getProp(f, ['id', 'Id', 'ID', 'key']);
-
-                // Normalize availability: Default to TRUE unless explicitly False
-                // This ensures that if the column is empty, we show the flavor (safer).
-                let isAvailable = true;
-                if (rawAvail !== undefined && rawAvail !== null && rawAvail !== '') {
-                    const s = String(rawAvail).toLowerCase().trim();
-                    // Check for explicit negative values
-                    if (['false', '0', 'no', 'нет', '-', 'off'].includes(s)) {
-                        isAvailable = false;
-                    }
-                    // Note: We don't check for 'true' specifically anymore, we assume true unless marked false.
-                }
-
-                return {
-                    id: String(rawId || generateId()),
-                    name: String(rawName || "Без названия").trim(),
-                    brand: String(rawBrand || FlavorBrand.OTHER).trim(),
-                    description: String(rawDesc || "").trim(),
-                    color: String(rawColor || "#cccccc").trim(),
-                    isAvailable: isAvailable
-                };
-            });
-
-            return { flavors, pin, brands };
-
-        } catch (parseError) {
-             console.error("JSON Parse Error:", parseError);
-             throw new Error("Ошибка обработки данных от Google (неверный JSON).");
-        }
-
+        return { flavors, brands };
     } catch (e: any) {
-        console.error("Error fetching from Google Sheet:", e);
-        // Return empty lists so the app knows fetch failed but does not crash
-        return { flavors: [], pin: null, brands: [] };
+        console.error('Error fetching from database:', e);
+        return { flavors: [], brands: [] };
     }
 };
 
 interface SaveResult {
     success: boolean;
     message: string;
+    normalizedFlavors?: Flavor[];
 }
 
-// Helper for sending data
-const sendToGoogleScript = async (payload: any): Promise<SaveResult> => {
-    const url = getGoogleScriptUrl();
-    if (!url) return { success: false, message: "URL скрипта не настроен" };
-    if (!navigator.onLine) return { success: false, message: "Нет интернета" };
+// 1. Save ONLY Flavors and Brands
+export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], venueId?: string | null): Promise<SaveResult> => {
+    if (!venueId) {
+        return { success: false, message: 'Не выбрано заведение' };
+    }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const client = getDatabaseClient();
+    if (!client) {
+        return { success: false, message: 'База данных не настроена' };
+    }
+
+    const validBrands = brands.filter(b => b && b.trim() !== "");
 
     try {
-        await fetch(url, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { 
-                'Content-Type': 'text/plain;charset=utf-8' 
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-        });
+        // Replace venue flavors and brands with latest snapshot
+        const deleteFlavors = client.from('flavors').delete().eq('venue_id', venueId);
+        const deleteBrands = client.from('brands').delete().eq('venue_id', venueId);
 
-        clearTimeout(timeoutId);
-        return { success: true, message: "Успешно отправлено" };
-    } catch (e: any) {
-        clearTimeout(timeoutId);
-        console.error("Save error:", e);
-        return { success: false, message: `Ошибка отправки: ${e.message}` };
+        await Promise.all([deleteFlavors, deleteBrands]);
+
+        const normalizedFlavors: Flavor[] = flavors.map(f => ({
+            ...f,
+            id: f.id && String(f.id).trim() !== '' ? String(f.id).trim() : generateUuid(),
+            name: String(f.name || '').trim(),
+            brand: String(f.brand || '').trim(),
+            description: String(f.description || '').trim(),
+            color: String(f.color || '#cccccc').trim(),
+            isAvailable: f.isAvailable !== false
+        }));
+
+        if (normalizedFlavors.length > 0) {
+            const { error: flavorsError } = await client.from('flavors').upsert(
+                normalizedFlavors.map(f => ({
+                    id: f.id,
+                    venue_id: venueId,
+                    name: f.name,
+                    brand: f.brand,
+                    description: f.description,
+                    color: f.color,
+                    is_available: f.isAvailable
+                }))
+            );
+
+            if (flavorsError) throw flavorsError;
+        }
+
+        if (validBrands.length > 0) {
+            const { error: brandsError } = await client.from('brands').upsert(
+                validBrands.map(name => ({ name, venue_id: venueId }))
+            );
+            if (brandsError) throw brandsError;
+        }
+
+        return { success: true, message: 'Данные сохранены в базе', normalizedFlavors };
+    } catch (error: any) {
+        console.error('Failed to save flavors to database', error);
+        return { success: false, message: error?.message || 'Не удалось сохранить данные' };
     }
 };
 
-// 1. Save ONLY Flavors and Brands
-export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[]): Promise<SaveResult> => {
-    const validBrands = brands.filter(b => b && b.trim() !== "");
-    
-    const payload = {
-        action: 'saveFlavors',
-        flavors: flavors,
-        brands: validBrands
-    };
-    return sendToGoogleScript(payload);
+// 2. Save ONLY PIN
+export const saveGlobalPin = async (pin: string, venueId?: string | null): Promise<SaveResult> => {
+    if (!venueId) {
+        return { success: false, message: 'Не выбрано заведение' };
+    }
+
+    const client = getDatabaseClient();
+    if (!client) {
+        return { success: false, message: 'База данных не настроена' };
+    }
+
+    const { error } = await client.from('venues').update({ admin_pin: pin }).eq('id', venueId);
+
+    if (error) {
+        console.error('Failed to save pin', error);
+        return { success: false, message: error.message };
+    }
+
+    return { success: true, message: 'Пин сохранён в базе' };
 };
 
-// 2. Save ONLY PIN
-export const saveGlobalPin = async (pin: string): Promise<SaveResult> => {
-    const payload = {
-        action: 'savePin',
-        pin: pin
-    };
-    return sendToGoogleScript(payload);
+export const verifyAdminPin = async (pin: string, venueId?: string | null): Promise<boolean> => {
+    if (!venueId || !pin) return false;
+    if (!isDatabaseConfigured()) return pin === '0000';
+
+    const client = getDatabaseClient();
+    if (!client) return false;
+
+    try {
+        const { data, error } = await client
+            .from('venues')
+            .select('id')
+            .eq('id', venueId)
+            .eq('admin_pin', pin)
+            .maybeSingle();
+
+        if (error) throw error;
+
+        return Boolean(data?.id);
+    } catch (e) {
+        console.error('Failed to verify pin', e);
+        return false;
+    }
+};
+
+export const updateAdminPin = async (currentPin: string, newPin: string, venueId?: string | null): Promise<SaveResult> => {
+    if (!venueId) {
+        return { success: false, message: 'Не выбрано заведение' };
+    }
+
+    const client = getDatabaseClient();
+    if (!client) {
+        return { success: false, message: 'База данных не настроена' };
+    }
+
+    try {
+        const { data, error } = await client
+            .from('venues')
+            .update({ admin_pin: newPin })
+            .eq('id', venueId)
+            .eq('admin_pin', currentPin)
+            .select('id')
+            .maybeSingle();
+
+        if (error) throw error;
+
+        if (!data) {
+            return { success: false, message: 'Текущий ПИН неверный' };
+        }
+
+        return { success: true, message: 'ПИН обновлен' };
+    } catch (e: any) {
+        console.error('Failed to update pin', e);
+        return { success: false, message: e?.message || 'Не удалось обновить ПИН' };
+    }
 };
 
 /**
@@ -238,8 +234,8 @@ export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], n
 
     const sanitizedIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
 
-    const newMix: SavedMix = {
-      id: generateId(),
+      const newMix: SavedMix = {
+        id: generateUuid(),
       userId,
       timestamp: Date.now(),
       ingredients: sanitizedIngredients,
@@ -255,7 +251,7 @@ export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], n
     console.error("Error saving mix:", e);
     const fallbackIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
     return {
-        id: generateId(),
+        id: generateUuid(),
         userId,
         timestamp: Date.now(),
         ingredients: fallbackIngredients,

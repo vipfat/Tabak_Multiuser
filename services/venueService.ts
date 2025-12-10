@@ -1,7 +1,5 @@
 import { Venue } from '../types';
-
-const VENUES_FEED_URL =
-  'https://script.google.com/macros/s/AKfycbzMObvuHIcjXVQRIZmsXG4h4aHBFqk0_qdBVdt2RRCQEToe90-GxxkhTF9avHkgC3U/exec';
+import { getDatabaseClient, isDatabaseConfigured } from './supabaseClient';
 
 const normalizeBool = (value: any, defaultValue = true) => {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -11,59 +9,68 @@ const normalizeBool = (value: any, defaultValue = true) => {
   return defaultValue;
 };
 
-const getProp = (obj: any, keys: string[]) => {
-  for (const k of keys) {
-    if (obj[k] !== undefined) return obj[k];
-  }
-  return undefined;
+const isSubscriptionActive = (dateString: string) => {
+  if (!dateString) return true;
+
+  const parsedDate = new Date(dateString);
+  if (Number.isNaN(parsedDate.getTime())) return true;
+
+  const endOfDay = new Date(parsedDate);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return endOfDay >= new Date();
 };
 
 export const fetchVenues = async (): Promise<Venue[]> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  if (!isDatabaseConfigured()) throw new Error('База данных не настроена');
 
-  try {
-    const response = await fetch(VENUES_FEED_URL, { signal: controller.signal });
-    clearTimeout(timeoutId);
+  const client = getDatabaseClient();
+  if (!client) throw new Error('База данных не настроена');
 
-    if (!response.ok) {
-      throw new Error('Не удалось получить список заведений');
-    }
+  const { data, error } = await client
+    .from('venues')
+    .select('id,title,city,logo,subscription_until,visible,flavor_schema')
+    .order('title', { ascending: true });
 
-    const text = await response.text();
-
-    // Google script sometimes returns HTML error page
-    if (text.trim().startsWith('<')) {
-      throw new Error('Получен неверный ответ от скрипта заведений');
-    }
-
-    const data = JSON.parse(text);
-    const rawVenues = Array.isArray(data) ? data : Array.isArray(data?.venues) ? data.venues : [];
-
-    return rawVenues
-      .map((v: any, index: number): Venue => {
-        const title = getProp(v, ['title', 'name', 'Заведение', 'place', 'Place']) || `Заведение ${index + 1}`;
-        const city = getProp(v, ['city', 'City', 'Город']) || 'Город не указан';
-        const logo = getProp(v, ['logo', 'Logo', 'Лого', 'image', 'Image']) || '';
-        const scriptUrl =
-          getProp(v, ['script', 'Script', 'scriptUrl', 'Скрипт', 'Скрипт Таблица', 'table']) || '';
-        const visible = normalizeBool(getProp(v, ['visible', 'Visible', 'Виден', 'show']));
-        const subscriptionUntil = getProp(v, ['subscription', 'Subscription', 'Подписка До', 'validUntil']) || '';
-
-        return {
-          id: String(index + 1),
-          title: String(title).trim(),
-          city: String(city).trim(),
-          logo: String(logo).trim(),
-          scriptUrl: String(scriptUrl).trim(),
-          subscriptionUntil: String(subscriptionUntil).trim(),
-          visible,
-        };
-      })
-      .filter((venue: Venue) => venue.visible && venue.scriptUrl);
-  } catch (error) {
-    clearTimeout(timeoutId);
+  if (error) {
     console.error('Failed to fetch venues', error);
-    throw error;
+    throw new Error('Не удалось получить список заведений');
   }
+
+  return (data || [])
+    .map((v: any) => ({
+      id: String(v.id),
+      title: String(v.title || 'Без названия').trim(),
+      city: String(v.city || 'Город не указан').trim(),
+      logo: String(v.logo || '').trim(),
+      scriptUrl: String(v.flavor_schema || '').trim(),
+      subscriptionUntil: String(v.subscription_until || '').trim(),
+      visible: normalizeBool(v.visible, true),
+    }))
+    .filter((venue: Venue) => venue.visible && isSubscriptionActive(venue.subscriptionUntil));
+};
+
+export const upsertVenue = async (venue: Venue) => {
+  const client = getDatabaseClient();
+  if (!client) throw new Error('База данных не настроена');
+
+  const { error } = await client.from('venues').upsert({
+    id: venue.id,
+    title: venue.title,
+    city: venue.city,
+    logo: venue.logo,
+    subscription_until: venue.subscriptionUntil,
+    visible: venue.visible,
+    flavor_schema: venue.scriptUrl,
+  });
+
+  if (error) throw error;
+};
+
+export const deleteVenue = async (venueId: string) => {
+  const client = getDatabaseClient();
+  if (!client) throw new Error('База данных не настроена');
+
+  const { error } = await client.from('venues').delete().eq('id', venueId);
+  if (error) throw error;
 };
