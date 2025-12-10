@@ -20,11 +20,6 @@ const generateId = (): string => {
     });
 };
 
-const isValidUuid = (value?: string | null) => {
-    if (!value || typeof value !== 'string') return false;
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-};
-
 export const saveSelectedVenue = (venue: Venue) => {
     try {
         localStorage.setItem(SELECTED_VENUE_KEY, JSON.stringify(venue));
@@ -117,7 +112,7 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
         if (flavors.length > 0) {
             const { error: flavorsError } = await client.from('flavors').upsert(
                 flavors.map(f => ({
-                    id: isValidUuid(f.id) ? f.id : generateId(),
+                    id: f.id,
                     venue_id: venueId,
                     name: f.name,
                     brand: f.brand,
