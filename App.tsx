@@ -1,31 +1,43 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2 } from 'lucide-react';
-import { Flavor, MixIngredient, TelegramUser, SavedMix } from './types';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin } from 'lucide-react';
+import { Flavor, MixIngredient, TelegramUser, SavedMix, Venue } from './types';
 import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
 import { getTelegramUser } from './services/telegramService';
-import { 
-  saveMixToHistory, 
+import {
+  saveMixToHistory,
   fetchFlavors,
-  saveGlobalPin
+  saveGlobalPin,
+  getSavedVenue,
+  saveSelectedVenue,
+  setGoogleScriptUrl
 } from './services/storageService';
+import { fetchVenues } from './services/venueService';
 import BowlChart from './components/BowlChart';
 import FlavorSelector from './components/FlavorSelector';
 import MixControls from './components/MixControls';
 import AdminPanel from './components/AdminPanel';
 import MasterMode from './components/MasterMode';
 import HistoryPanel from './components/HistoryPanel';
+import VenueSelector from './components/VenueSelector';
 
 const App: React.FC = () => {
   // User State
   const [user, setUser] = useState<TelegramUser | null>(null);
-  
+
+  // Venue State
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [selectedVenue, setSelectedVenue] = useState<Venue | null>(null);
+  const [isVenueSelectorOpen, setIsVenueSelectorOpen] = useState(false);
+  const [isVenuesLoading, setIsVenuesLoading] = useState(false);
+  const [venuesError, setVenuesError] = useState('');
+
   // App State
   const [allFlavors, setAllFlavors] = useState<Flavor[]>(AVAILABLE_FLAVORS);
   const [customBrands, setCustomBrands] = useState<string[]>([]);
   const [mix, setMix] = useState<MixIngredient[]>([]);
   const [mixName, setMixName] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   
   // UI State
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -48,14 +60,21 @@ const App: React.FC = () => {
   const [newPin, setNewPin] = useState('');
   const [savePinStatus, setSavePinStatus] = useState('');
 
-  // Initialization
-  useEffect(() => {
-    const tgUser = getTelegramUser();
-    setUser(tgUser);
-    loadData();
+  const loadVenues = useCallback(async () => {
+    setIsVenuesLoading(true);
+    setVenuesError('');
+    try {
+      const list = await fetchVenues();
+      setVenues(list);
+    } catch (e: any) {
+      setVenuesError(e?.message || 'Неизвестная ошибка');
+    } finally {
+      setIsVenuesLoading(false);
+    }
   }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+      if (!selectedVenue) return;
       setIsLoading(true);
       try {
           const { flavors, pin, brands } = await fetchFlavors();
@@ -74,7 +93,26 @@ const App: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  };
+  }, [selectedVenue]);
+
+  // Initialization
+  useEffect(() => {
+    const tgUser = getTelegramUser();
+    setUser(tgUser);
+
+    const storedVenue = getSavedVenue();
+    if (storedVenue) {
+        setSelectedVenue(storedVenue);
+        setGoogleScriptUrl(storedVenue.scriptUrl);
+    }
+
+    loadVenues();
+  }, [loadVenues]);
+
+  useEffect(() => {
+    if (!selectedVenue) return;
+    loadData();
+  }, [loadData, selectedVenue]);
 
   // Filtered available flavors for the selector
   const availableFlavors = useMemo(() => {
@@ -176,6 +214,22 @@ const App: React.FC = () => {
 
   // --- Flavor Management ---
 
+  const handleSelectVenue = (venue: Venue) => {
+    setSelectedVenue(venue);
+    saveSelectedVenue(venue);
+    setGoogleScriptUrl(venue.scriptUrl);
+
+    setIsVenueSelectorOpen(false);
+    setMix([]);
+    setMixName('');
+    setCustomBrands([]);
+    setAllFlavors(AVAILABLE_FLAVORS);
+    setIsSelectorOpen(false);
+    setIsHistoryOpen(false);
+    setIsMasterModeOpen(false);
+    setIsAdminOpen(false);
+  };
+
   const toggleFlavor = (flavor: Flavor) => {
     const exists = mix.find(m => m.id === flavor.id);
 
@@ -269,11 +323,23 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 pb-28 font-sans selection:bg-emerald-500 selection:text-white">
-      
+
+      <VenueSelector
+        venues={venues}
+        isOpen={!selectedVenue || isVenueSelectorOpen}
+        isLoading={isVenuesLoading}
+        error={venuesError}
+        selectedVenueId={selectedVenue?.id}
+        allowClose={!!selectedVenue}
+        onClose={() => setIsVenueSelectorOpen(false)}
+        onSelect={handleSelectVenue}
+        onRefresh={loadVenues}
+      />
+
       {/* Header */}
       <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
         <div className="max-w-lg mx-auto px-4 h-16 flex items-center justify-between">
-          <div 
+          <div
             className="flex items-center gap-2 cursor-pointer select-none active:scale-95 transition-transform"
             onClick={handleSecretClick}
           >
@@ -286,7 +352,14 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-2">
-              <button 
+              <button
+                onClick={() => setIsVenueSelectorOpen(true)}
+                className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
+              >
+                <MapPin size={20} />
+                <span className="text-xs font-bold hidden sm:block">{selectedVenue ? selectedVenue.title : 'Выбрать место'}</span>
+              </button>
+              <button
                 onClick={() => setIsHistoryOpen(true)}
                 className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
               >
@@ -307,7 +380,32 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-lg mx-auto px-4 pt-6">
-        
+
+        {selectedVenue && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center">
+                {selectedVenue.logo ? (
+                  <img src={selectedVenue.logo} alt={selectedVenue.title} className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                  <MapPin className="text-emerald-400" size={22} />
+                )}
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400 font-bold">Текущее место</p>
+                <p className="text-lg font-bold text-white leading-tight">{selectedVenue.title}</p>
+                <p className="text-sm text-slate-400 flex items-center gap-1"><MapPin size={14} />{selectedVenue.city}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsVenueSelectorOpen(true)}
+              className="px-3 py-2 text-sm font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+            >
+              Сменить место
+            </button>
+          </div>
+        )}
+
         {/* Bowl Visualization */}
         <section className="mb-8 relative">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none"></div>
