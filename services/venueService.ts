@@ -9,6 +9,18 @@ const normalizeBool = (value: any, defaultValue = true) => {
   return defaultValue;
 };
 
+const isSubscriptionActive = (dateString: string) => {
+  if (!dateString) return true;
+
+  const parsedDate = new Date(dateString);
+  if (Number.isNaN(parsedDate.getTime())) return true;
+
+  const endOfDay = new Date(parsedDate);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  return endOfDay >= new Date();
+};
+
 export const fetchVenues = async (): Promise<Venue[]> => {
   if (!isDatabaseConfigured()) throw new Error('База данных не настроена');
 
@@ -35,7 +47,7 @@ export const fetchVenues = async (): Promise<Venue[]> => {
       subscriptionUntil: String(v.subscription_until || '').trim(),
       visible: normalizeBool(v.visible, true),
     }))
-    .filter((venue: Venue) => venue.visible);
+    .filter((venue: Venue) => venue.visible && isSubscriptionActive(venue.subscriptionUntil));
 };
 
 export const upsertVenue = async (venue: Venue) => {
