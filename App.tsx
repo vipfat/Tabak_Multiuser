@@ -8,7 +8,6 @@ import {
   saveMixToHistory,
   fetchFlavors,
   saveGlobalPin,
-  getSavedVenue,
   saveSelectedVenue
 } from './services/storageService';
 import { fetchVenues } from './services/venueService';
@@ -98,11 +97,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const tgUser = getTelegramUser();
     setUser(tgUser);
-
-    const storedVenue = getSavedVenue();
-    if (storedVenue) {
-        setSelectedVenue(storedVenue);
-    }
 
     loadVenues();
   }, [loadVenues]);
