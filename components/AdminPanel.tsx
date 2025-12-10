@@ -4,20 +4,6 @@ import { Flavor, FlavorBrand } from '../types';
 import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle } from 'lucide-react';
 import { saveFlavorsAndBrands, fetchFlavors } from '../services/storageService';
 
-const generateFlavorId = () => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    try {
-      return crypto.randomUUID();
-    } catch (e) {
-      // Fallback
-    }
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-};
-
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -178,10 +164,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         // Send ONLY Flavors and Brands. DO NOT SEND PIN.
         const result = await saveFlavorsAndBrands(allFlavors, customBrands, activeVenueId);
-
-        if (result.normalizedFlavors && setAllFlavors) {
-            setAllFlavors(result.normalizedFlavors);
-        }
         
         if (result.success) {
             setSyncStatus({ type: 'success', msg: result.message });
