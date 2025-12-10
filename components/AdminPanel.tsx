@@ -14,7 +14,6 @@ interface AdminPanelProps {
   setAllFlavors?: (f: Flavor[]) => void;
   customBrands?: string[];
   setCustomBrands?: (brands: string[]) => void;
-  currentPin?: string;
   activeVenueId?: string;
 }
 
@@ -28,7 +27,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setAllFlavors,
     customBrands = [],
     setCustomBrands,
-    currentPin = "0000",
     activeVenueId,
 }) => {
   const [activeTab, setActiveTab] = useState<'stock' | 'add' | 'brands' | 'settings'>('stock');
@@ -202,7 +200,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
         setSyncStatus({ type: 'loading', msg: 'Загрузка...' });
 
-        const { flavors, pin, brands } = await fetchFlavors(activeVenueId);
+        const { flavors, brands } = await fetchFlavors(activeVenueId);
         
         if (setAllFlavors) {
             if (flavors.length > 0) {

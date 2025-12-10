@@ -7,8 +7,9 @@ import { getTelegramUser } from './services/telegramService';
 import {
   saveMixToHistory,
   fetchFlavors,
-  saveGlobalPin,
-  saveSelectedVenue
+  saveSelectedVenue,
+  verifyAdminPin,
+  updateAdminPin
 } from './services/storageService';
 import { fetchVenues } from './services/venueService';
 import BowlChart from './components/BowlChart';
@@ -50,7 +51,6 @@ const App: React.FC = () => {
   const [showPinPad, setShowPinPad] = useState(false);
   const [isFetchingPin, setIsFetchingPin] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [adminPin, setAdminPin] = useState('0000'); // Will be updated from cloud
 
   // PIN Change Logic
   const [lockClickCount, setLockClickCount] = useState(0);
@@ -59,6 +59,7 @@ const App: React.FC = () => {
   const [currentPinInput, setCurrentPinInput] = useState('');
   const [newPin, setNewPin] = useState('');
   const [savePinStatus, setSavePinStatus] = useState('');
+  const [verifiedPin, setVerifiedPin] = useState('');
 
   const loadVenues = useCallback(async () => {
     setIsVenuesLoading(true);
@@ -77,13 +78,9 @@ const App: React.FC = () => {
       if (!selectedVenue) return;
       setIsLoading(true);
       try {
-          const { flavors, pin, brands } = await fetchFlavors(selectedVenue.id);
+          const { flavors, brands } = await fetchFlavors(selectedVenue.id);
           if (flavors && flavors.length > 0) {
               setAllFlavors(flavors);
-          }
-          if (pin && pin !== "undefined") {
-              console.log("Initial PIN Load:", pin);
-              setAdminPin(pin);
           }
           if (brands && brands.length > 0) {
               setCustomBrands(brands);
@@ -151,47 +148,45 @@ const App: React.FC = () => {
   // Logic: Fetch actual PIN from Cloud first, then allow input
   const handleOpenPinPad = async () => {
       setShowPinPad(true);
-      setIsFetchingPin(true);
-      try {
-          // Force fetch to get the latest PIN from Cloud
-          const { pin } = await fetchFlavors(selectedVenue?.id);
-          if (pin && pin !== "undefined") {
-              console.log("Refreshed PIN from cloud:", pin);
-              setAdminPin(pin);
-          }
-      } catch (e) {
-          console.error("Error fetching latest pin", e);
-      } finally {
-          setIsFetchingPin(false);
-      }
+      setIsFetchingPin(false);
   };
 
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Strict check
-    const currentPin = adminPin || "0000";
-    if (pinInput === currentPin) {
-        setIsAdminOpen(true);
-        setShowPinPad(false);
-        setPinInput('');
-        setLockClickCount(0);
+    setIsFetchingPin(true);
+
+    const isValid = await verifyAdminPin(pinInput, selectedVenue?.id);
+
+    setIsFetchingPin(false);
+
+    if (isValid) {
+      setIsAdminOpen(true);
+      setShowPinPad(false);
+      setPinInput('');
+      setLockClickCount(0);
     } else {
-        alert("Неверный код");
-        setPinInput('');
+      alert("Неверный код");
+      setPinInput('');
     }
   };
 
-  const handleVerifyOldPinSubmit = (e: React.FormEvent) => {
+  const handleVerifyOldPinSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      const currentPin = adminPin || "0000";
 
-      if (currentPinInput === currentPin) {
-          setChangePinStep('new');
-          setCurrentPinInput('');
-          setSavePinStatus('');
+      setIsFetchingPin(true);
+
+      const isValid = await verifyAdminPin(currentPinInput, selectedVenue?.id);
+
+      setIsFetchingPin(false);
+
+      if (isValid) {
+        setVerifiedPin(currentPinInput);
+        setChangePinStep('new');
+        setCurrentPinInput('');
+        setSavePinStatus('');
       } else {
-          alert("Текущий ПИН неверный");
-          setCurrentPinInput('');
+        alert("Текущий ПИН неверный");
+        setCurrentPinInput('');
       }
   };
 
@@ -200,19 +195,19 @@ const App: React.FC = () => {
       if (changePinStep !== 'new') {
           return;
       }
+      if (!verifiedPin) {
+          alert("Сначала подтвердите текущий ПИН");
+          return;
+      }
       if (newPin.length !== 4) {
           alert("ПИН должен быть 4 цифры");
           return;
       }
       
       setSavePinStatus('Сохранение...');
-      
-      // 1. Update local state immediately
-      setAdminPin(newPin);
-      
-      // 2. Save ONLY PIN to Cloud (Action: savePin)
-      const result = await saveGlobalPin(newPin, selectedVenue?.id);
-      
+
+      const result = await updateAdminPin(verifiedPin, newPin, selectedVenue?.id);
+
       if (result.success) {
           setSavePinStatus('Сохранено!');
           setTimeout(() => {
@@ -223,6 +218,7 @@ const App: React.FC = () => {
               setCurrentPinInput('');
               setSavePinStatus('');
               setLockClickCount(0);
+              setVerifiedPin('');
           }, 1000);
       } else {
           setSavePinStatus('Ошибка!');
@@ -238,13 +234,14 @@ const App: React.FC = () => {
 
     setIsVenueSelectorOpen(false);
     setMix([]);
-    setMixName('');
-    setCustomBrands([]);
-    setAllFlavors(AVAILABLE_FLAVORS);
-    setIsSelectorOpen(false);
-    setIsHistoryOpen(false);
-    setIsMasterModeOpen(false);
-    setIsAdminOpen(false);
+      setMixName('');
+      setCustomBrands([]);
+      setAllFlavors(AVAILABLE_FLAVORS);
+      setIsSelectorOpen(false);
+      setIsHistoryOpen(false);
+      setIsMasterModeOpen(false);
+      setIsAdminOpen(false);
+      setVerifiedPin('');
   };
 
   const toggleFlavor = (flavor: Flavor) => {
@@ -350,6 +347,7 @@ const App: React.FC = () => {
       setNewPin('');
       setIsFetchingPin(false);
       setSavePinStatus('');
+      setVerifiedPin('');
   }
 
   return (
@@ -551,7 +549,7 @@ const App: React.FC = () => {
       )}
 
       {/* Admin Panel */}
-      <AdminPanel 
+      <AdminPanel
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
         allFlavors={allFlavors}
@@ -561,7 +559,6 @@ const App: React.FC = () => {
         setAllFlavors={setAllFlavors}
         customBrands={customBrands}
         setCustomBrands={setCustomBrands}
-        currentPin={adminPin}
         activeVenueId={selectedVenue?.id}
       />
 
