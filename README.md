@@ -18,3 +18,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1iEyMT_otaxkuigZ1ZSRTKg
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Database environments
+
+Guidance for separating dev/stage/prod databases, creating scoped app users, and managing secrets/DSNs is documented in [docs/database-environments.md](docs/database-environments.md).
