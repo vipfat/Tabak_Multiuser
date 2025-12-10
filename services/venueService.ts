@@ -1,7 +1,7 @@
 import { Venue } from '../types';
 
 const VENUES_FEED_URL =
-  'https://script.google.com/macros/s/AKfycbzMObvuHIcjXVQRIZmsXG4h4aHBFqk0_qdBVdt2RRCQEToe90-GxxkhTF9avHkgC3U/exec';
+  'https://script.google.com/macros/s/AKfycbxSSPbC0Y-I-y0QI5qon8mnpAjdADF6x3WhLPUSCGAMCHDhnyMUPuAMwpgNMdacOflC/exec';
 
 const normalizeBool = (value: any, defaultValue = true) => {
   if (value === undefined || value === null || value === '') return defaultValue;
