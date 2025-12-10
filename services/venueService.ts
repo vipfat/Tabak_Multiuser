@@ -1,7 +1,7 @@
 import { Venue } from '../types';
 
 const VENUES_FEED_URL =
-  'https://script.google.com/macros/s/AKfycbxSSPbC0Y-I-y0QI5qon8mnpAjdADF6x3WhLPUSCGAMCHDhnyMUPuAMwpgNMdacOflC/exec';
+  'https://script.google.com/macros/s/AKfycbzMObvuHIcjXVQRIZmsXG4h4aHBFqk0_qdBVdt2RRCQEToe90-GxxkhTF9avHkgC3U/exec';
 
 const normalizeBool = (value: any, defaultValue = true) => {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -48,12 +48,15 @@ export const fetchVenues = async (): Promise<Venue[]> => {
         const scriptUrl =
           getProp(v, ['script', 'Script', 'scriptUrl', 'Скрипт', 'Скрипт Таблица', 'table']) || '';
         const visible = normalizeBool(getProp(v, ['visible', 'Visible', 'Виден', 'show']));
+        const subscriptionUntil = getProp(v, ['subscription', 'Subscription', 'Подписка До', 'validUntil']) || '';
+
         return {
           id: String(index + 1),
           title: String(title).trim(),
           city: String(city).trim(),
           logo: String(logo).trim(),
           scriptUrl: String(scriptUrl).trim(),
+          subscriptionUntil: String(subscriptionUntil).trim(),
           visible,
         };
       })

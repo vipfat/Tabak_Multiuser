@@ -49,5 +49,6 @@ export interface Venue {
   city: string;
   logo: string;
   scriptUrl: string;
+  subscriptionUntil: string;
   visible: boolean;
 }

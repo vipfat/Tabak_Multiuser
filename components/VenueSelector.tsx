@@ -85,12 +85,18 @@ const VenueSelector: React.FC<VenueSelectorProps> = ({
                       : 'border-slate-800 hover:border-emerald-600/60'
                   }`}
                 >
+                  {venue.subscriptionUntil && (
+                    <span className="absolute top-3 right-3 text-[10px] uppercase tracking-wide bg-emerald-500/20 text-emerald-200 px-2 py-1 rounded-full border border-emerald-500/30">
+                      до {venue.subscriptionUntil}
+                    </span>
+                  )}
+
                   <div className="aspect-square rounded-xl bg-slate-800/70 border border-slate-700 flex items-center justify-center overflow-hidden mb-4">
                     {venue.logo ? (
                       <img
                         src={venue.logo}
                         alt={venue.title}
-                        className="max-w-full max-h-full object-contain p-3"
+                        className="w-full h-full object-cover transition duration-200 group-hover:scale-105"
                         loading="lazy"
                       />
                     ) : (

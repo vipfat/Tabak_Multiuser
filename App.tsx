@@ -386,12 +386,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden flex items-center justify-center">
                 {selectedVenue.logo ? (
-                  <img
-                    src={selectedVenue.logo}
-                    alt={selectedVenue.title}
-                    className="max-w-full max-h-full object-contain p-1"
-                    loading="lazy"
-                  />
+                  <img src={selectedVenue.logo} alt={selectedVenue.title} className="w-full h-full object-cover" loading="lazy" />
                 ) : (
                   <MapPin className="text-emerald-400" size={22} />
                 )}
