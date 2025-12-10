@@ -87,6 +87,7 @@ export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult
 interface SaveResult {
     success: boolean;
     message: string;
+    normalizedFlavors?: Flavor[];
 }
 
 // 1. Save ONLY Flavors and Brands
