@@ -6,7 +6,7 @@ const STORAGE_KEY = 'hookah_alchemist_history_v2';
 const SELECTED_VENUE_KEY = 'hookah_alchemist_selected_venue';
 
 // Robust ID generator with fallback
-const generateId = (): string => {
+export const generateUuid = (): string => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         try {
             return crypto.randomUUID();
@@ -66,7 +66,7 @@ export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult
         if (brandsError) throw brandsError;
 
         const flavors: Flavor[] = (flavorsData || []).map((row: any) => ({
-            id: String(row.id || generateId()),
+            id: String(row.id || generateUuid()),
             name: String(row.name || 'Без названия').trim(),
             brand: String(row.brand || FlavorBrand.OTHER).trim(),
             description: String(row.description || '').trim(),
@@ -110,9 +110,19 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
 
         await Promise.all([deleteFlavors, deleteBrands]);
 
-        if (flavors.length > 0) {
+        const normalizedFlavors: Flavor[] = flavors.map(f => ({
+            ...f,
+            id: f.id && String(f.id).trim() !== '' ? String(f.id).trim() : generateUuid(),
+            name: String(f.name || '').trim(),
+            brand: String(f.brand || '').trim(),
+            description: String(f.description || '').trim(),
+            color: String(f.color || '#cccccc').trim(),
+            isAvailable: f.isAvailable !== false
+        }));
+
+        if (normalizedFlavors.length > 0) {
             const { error: flavorsError } = await client.from('flavors').upsert(
-                flavors.map(f => ({
+                normalizedFlavors.map(f => ({
                     id: f.id,
                     venue_id: venueId,
                     name: f.name,
@@ -133,7 +143,7 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
             if (brandsError) throw brandsError;
         }
 
-        return { success: true, message: 'Данные сохранены в базе' };
+        return { success: true, message: 'Данные сохранены в базе', normalizedFlavors };
     } catch (error: any) {
         console.error('Failed to save flavors to database', error);
         return { success: false, message: error?.message || 'Не удалось сохранить данные' };
@@ -172,8 +182,8 @@ export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], n
 
     const sanitizedIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
 
-    const newMix: SavedMix = {
-      id: generateId(),
+      const newMix: SavedMix = {
+        id: generateUuid(),
       userId,
       timestamp: Date.now(),
       ingredients: sanitizedIngredients,
@@ -189,7 +199,7 @@ export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], n
     console.error("Error saving mix:", e);
     const fallbackIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
     return {
-        id: generateId(),
+        id: generateUuid(),
         userId,
         timestamp: Date.now(),
         ingredients: fallbackIngredients,
