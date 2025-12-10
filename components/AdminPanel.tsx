@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Flavor, FlavorBrand } from '../types';
 import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle } from 'lucide-react';
-import { saveFlavorsAndBrands, fetchFlavors } from '../services/storageService';
+import { saveFlavorsAndBrands, fetchFlavors, generateUuid } from '../services/storageService';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -89,7 +89,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const newFlavor: Flavor = {
-      id: generateFlavorId(),
+      id: generateUuid(),
       name: newName,
       brand: brandSelectValue,
       description: newDescription,
