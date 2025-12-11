@@ -1,7 +1,8 @@
 // telegramService.ts
 const AUTH_PATH = '/api/auth/telegram/callback';
 
-const backendBase = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+const backendBase = (import.meta.env.VITE_BACKEND_URL || runtimeOrigin || '').replace(/\/$/, '');
 const authEndpoint = `${backendBase}${AUTH_PATH}`;
 
 export function getTelegramAuthUrl() {
@@ -20,8 +21,14 @@ export async function submitTelegramProfile(payload: Record<string, any>) {
     try {
       const error = await response.json();
       if (error?.error) message = error.error;
+      else if (error?.message) message = error.message;
     } catch (e) {
-      // ignore
+      try {
+        const text = await response.text();
+        if (text) message = `${message}: ${text}`;
+      } catch (readError) {
+        // ignore
+      }
     }
     throw new Error(message);
   }

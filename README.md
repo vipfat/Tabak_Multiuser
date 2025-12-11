@@ -86,3 +86,4 @@ Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin
 В репозитории есть минимальный валидатор подписи Telegram: `node server/telegramAuth.js`. Он поднимает эндпоинт `/api/auth/telegram/callback`,
 который проверяет HMAC (secret_key = sha256(BOT_TOKEN)), ограничивает `auth_date` 10 минутами и требует HTTPS (`X-Forwarded-Proto: https`).
 Установите `TELEGRAM_BOT_TOKEN` в окружении и проксируйте этот путь с HTTPS-домена, совпадающего с настроенным в BotFather.
+Для локальной отладки без TLS установите `TELEGRAM_HTTPS_ONLY=false`; в проде это значение должно оставаться включённым.

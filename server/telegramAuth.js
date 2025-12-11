@@ -111,11 +111,18 @@ const buildUserResponse = (payload) => ({
 export const handleTelegramRequest = async (req, res, options = {}) => {
   if (!req.url?.startsWith(CALLBACK_PATH)) return false;
 
-  const { botToken = process.env.TELEGRAM_BOT_TOKEN, ttlSeconds = TEN_MINUTES, httpsOnly = true } = options;
+  const {
+    botToken = process.env.TELEGRAM_BOT_TOKEN,
+    ttlSeconds = TEN_MINUTES,
+    httpsOnly = options.httpsOnly ?? process.env.TELEGRAM_HTTPS_ONLY !== 'false',
+  } = options;
 
   if (httpsOnly && !enforceHttps(req)) {
     res.writeHead(400, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'HTTPS is required' }));
+    res.end(JSON.stringify({
+      error: 'HTTPS is required',
+      hint: 'Set TELEGRAM_HTTPS_ONLY=false for local testing without TLS',
+    }));
     return true;
   }
 
