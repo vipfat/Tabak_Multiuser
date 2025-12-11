@@ -31,5 +31,12 @@ Expected schema:
 - `venues`: `id`, `title`, `city`, `logo`, `subscription_until`, `visible`, `admin_pin`, `flavor_schema`
 - `flavors`: `id`, `venue_id`, `name`, `brand`, `description`, `color`, `is_available`
 - `brands`: `name`, `venue_id`
+- `clients`: `id`, `first_name`, `last_name`, `username`, `language_code`, `last_seen_at`
+- `mixes`: `id`, `user_id`, `name`, `ingredients (jsonb)`, `is_favorite`, `venue_snapshot (jsonb)`, `created_at`
+
+To enable Telegram Login Widget, provide the following environment variables:
+
+- `TELEGRAM_BOT_TOKEN` – Bot token used by the `/api/auth/telegram/callback` endpoint
+- `VITE_TELEGRAM_BOT_USERNAME` – Bot username displayed inside the Telegram button
 
 Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin_pin`.
