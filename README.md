@@ -39,4 +39,8 @@ To enable Telegram Login Widget, provide the following environment variables:
 - `TELEGRAM_BOT_TOKEN` – Bot token used by the `/api/auth/telegram/callback` endpoint
 - `VITE_TELEGRAM_BOT_USERNAME` – Bot username displayed inside the Telegram button
 
+If your hosting forbids POST requests to the callback path (e.g., static nginx), point `VITE_TELEGRAM_AUTH_URL` to a server that
+handles `GET`/`POST` on `/api/auth/telegram/callback` (you can run `node server/telegramAuth.js` locally or deploy it as a separ
+ate function).
+
 Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin_pin`.

@@ -62,24 +62,57 @@ export const restoreTelegramSession = (): { user: TelegramUser; token: string } 
   }
 };
 
+const requestTelegramSession = async (url: string, payload: any, method: 'POST' | 'GET') => {
+  const options: RequestInit = { method };
+
+  if (method === 'POST') {
+    options.headers = { 'content-type': 'application/json' };
+    options.body = JSON.stringify(payload);
+  } else {
+    const urlWithParams = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        urlWithParams.searchParams.set(key, String(value));
+      }
+    });
+    url = urlWithParams.toString();
+  }
+
+  const response = await fetch(url, options);
+  return response;
+};
+
 export const submitTelegramProfile = async (payload: any) => {
   const url = getTelegramAuthUrl();
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || 'Не удалось пройти авторизацию');
+  const attempt = async (method: 'POST' | 'GET') => {
+    const response = await requestTelegramSession(url, payload, method);
+    if (!response.ok) {
+      const errorText = await response.text();
+      const error = errorText || 'Не удалось пройти авторизацию';
+      return { ok: false, error, response } as const;
+    }
+    const json = await response.json();
+    return { ok: true, json } as const;
+  };
+
+  let result = await attempt('POST');
+
+  // Some hosts (static nginx) reject POST with 405. Try GET fallback for compatibility.
+  if (!result.ok && result.response?.status === 405) {
+    result = await attempt('GET');
   }
 
-  const json = await response.json();
-  if (json?.user && json?.token) {
-    persistTelegramSession(json.user, json.token);
+  if (!result.ok) {
+    const hint =
+      'Убедитесь, что переменная VITE_TELEGRAM_AUTH_URL указывает на работающий сервер /api/auth/telegram/callback';
+    throw new Error(`${result.error}. ${hint}`);
   }
-  return json;
+
+  if (result.json?.user && result.json?.token) {
+    persistTelegramSession(result.json.user, result.json.token);
+  }
+  return result.json;
 };
 
 export const getTelegramUser = (): TelegramUser | null => {
