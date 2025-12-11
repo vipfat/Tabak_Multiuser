@@ -36,7 +36,26 @@ declare global {
  * If running in a browser (dev mode), returns a mock user.
  */
 export const getTelegramAuthUrl = () => {
-  if (import.meta.env.VITE_TELEGRAM_AUTH_URL) return import.meta.env.VITE_TELEGRAM_AUTH_URL;
+  const envAuthUrl = import.meta.env.VITE_TELEGRAM_AUTH_URL;
+  if (envAuthUrl) {
+    try {
+      const base = envAuthUrl.startsWith('http')
+        ? envAuthUrl
+        : typeof window !== 'undefined'
+          ? new URL(envAuthUrl, window.location.origin).toString()
+          : new URL(envAuthUrl, 'http://localhost').toString();
+
+      const url = new URL(base);
+      if (!url.pathname.endsWith(AUTH_PATH)) {
+        url.pathname = AUTH_PATH;
+      }
+      return url.toString();
+    } catch (e) {
+      console.warn('Failed to normalize VITE_TELEGRAM_AUTH_URL, using raw value', e);
+      return envAuthUrl;
+    }
+  }
+
   if (typeof window === 'undefined') return AUTH_PATH;
   return `${window.location.origin}${AUTH_PATH}`;
 };
