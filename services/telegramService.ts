@@ -63,7 +63,7 @@ const validateTelegramAuth = async (params: URLSearchParams): Promise<boolean> =
 const getCachedUser = (): TelegramUser | null => {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as TelegramUser) : null;
   } catch (e) {
     return null;
@@ -73,7 +73,7 @@ const getCachedUser = (): TelegramUser | null => {
 const persistUser = (user: TelegramUser) => {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
   } catch (e) {
     // ignore
   }
@@ -153,6 +153,11 @@ export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null
       persistUser(parsed);
       const cleanUrl = window.location.origin + window.location.pathname + window.location.search;
       window.history.replaceState({}, document.title, cleanUrl);
+
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ source: 'telegram-auth', user: parsed }, window.location.origin);
+        window.close();
+      }
       return { user: parsed };
     }
   }
@@ -176,7 +181,7 @@ export const startTelegramLogin = () => {
 
 export const logoutTelegramUser = () => {
   if (typeof window === 'undefined') return;
-  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  localStorage.removeItem(AUTH_STORAGE_KEY);
 };
 
 export const isTelegramWebApp = (): boolean => {
