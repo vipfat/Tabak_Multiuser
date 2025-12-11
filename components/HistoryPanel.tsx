@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TelegramUser, SavedMix } from '../types';
 import { X, Heart, Clock, Trash2, ArrowRightCircle, Search, MapPin } from 'lucide-react';
 import { getHistory, toggleFavoriteMix, deleteMix } from '../services/storageService';
@@ -14,40 +14,39 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ isOpen, onClose, user, onLo
   const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history');
   const [mixes, setMixes] = useState<SavedMix[]>([]);
 
-  const refreshData = useCallback(async () => {
-    const data = await getHistory(user.id);
-    data.sort((a, b) => b.timestamp - a.timestamp);
-    setMixes(data);
-  }, [user.id]);
-
   useEffect(() => {
     if (isOpen) {
       refreshData();
     }
-  }, [isOpen, user.id, refreshData]);
+  }, [isOpen, user.id]);
 
-  const handleToggleFavorite = async (mixId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-
-    // Optimistic update
-    setMixes(prev => prev.map(m =>
-        m.id === mixId ? { ...m, isFavorite: !m.isFavorite } : m
-    ));
-
-    const updated = await toggleFavoriteMix(mixId, user.id);
-    setMixes(updated);
+  const refreshData = () => {
+    const data = getHistory(user.id);
+    // Sort by newest
+    data.sort((a, b) => b.timestamp - a.timestamp);
+    setMixes(data);
   };
 
-  const handleDelete = async (mixId: string, e: React.MouseEvent) => {
+  const handleToggleFavorite = (mixId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    
+    // Optimistic update
+    setMixes(prev => prev.map(m => 
+        m.id === mixId ? { ...m, isFavorite: !m.isFavorite } : m
+    ));
+    
+    toggleFavoriteMix(mixId);
+  };
 
+  const handleDelete = (mixId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
     // Optimistic update
     setMixes(prev => prev.filter(m => m.id !== mixId));
-
-    const updated = await deleteMix(mixId, user.id);
-    setMixes(updated);
+    
+    deleteMix(mixId);
   };
 
   if (!isOpen) return null;
