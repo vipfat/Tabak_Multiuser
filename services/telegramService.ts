@@ -87,13 +87,29 @@ export const submitTelegramProfile = async (payload: any) => {
 
   const attempt = async (method: 'POST' | 'GET') => {
     const response = await requestTelegramSession(url, payload, method);
+    const contentType = response.headers.get('content-type') || '';
+    const body = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      const error = errorText || 'Не удалось пройти авторизацию';
+      const error = body || 'Не удалось пройти авторизацию';
       return { ok: false, error, response } as const;
     }
-    const json = await response.json();
-    return { ok: true, json } as const;
+
+    if (!contentType.includes('application/json')) {
+      const error =
+        body ||
+        'Не удалось разобрать ответ авторизации. Проверьте, что эндпоинт возвращает JSON и не проксируется в HTML-страницу.';
+      return { ok: false, error, response } as const;
+    }
+
+    try {
+      const json = JSON.parse(body);
+      return { ok: true, json } as const;
+    } catch (error) {
+      const message =
+        body || (error as Error)?.message || 'Не удалось разобрать ответ авторизации из JSON.';
+      return { ok: false, error: message, response } as const;
+    }
   };
 
   let result = await attempt('POST');
