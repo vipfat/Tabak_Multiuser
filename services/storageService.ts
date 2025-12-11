@@ -2,6 +2,7 @@ import { SavedMix, MixIngredient, Flavor, FlavorBrand, Venue } from '../types';
 import { AVAILABLE_FLAVORS } from '../constants';
 import { getDatabaseClient, isDatabaseConfigured } from './supabaseClient';
 
+const MIXES_TABLE = 'mixes';
 const STORAGE_KEY = 'hookah_alchemist_history_v2';
 const SELECTED_VENUE_KEY = 'hookah_alchemist_selected_venue';
 
@@ -227,19 +228,62 @@ export const updateAdminPin = async (currentPin: string, newPin: string, venueId
  * HISTORY MANAGEMENT (Local User Storage)
  */
 
-export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], name: string, venue?: Venue | null): SavedMix => {
+const mapDbMixToSavedMix = (row: any): SavedMix => ({
+  id: String(row.id ?? generateUuid()),
+  userId: Number(row.user_id ?? row.userId),
+  timestamp: row.created_at ? Date.parse(row.created_at) : row.timestamp ?? Date.now(),
+  ingredients: row.ingredients ?? [],
+  name: row.name ?? 'Микс без названия',
+  isFavorite: Boolean(row.is_favorite ?? row.isFavorite),
+  venue: row.venue_snapshot ?? null,
+});
+
+export const saveMixToHistory = async (
+  userId: number,
+  ingredients: MixIngredient[],
+  name: string,
+  venue?: Venue | null,
+): Promise<SavedMix> => {
+  const sanitizedIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
+
+  if (isDatabaseConfigured()) {
+    const client = getDatabaseClient();
+    if (client) {
+      try {
+        const payload = {
+          id: generateUuid(),
+          user_id: userId,
+          name: name || 'Мой микс',
+          ingredients: sanitizedIngredients,
+          is_favorite: false,
+          venue_snapshot: venue ?? null,
+          created_at: new Date().toISOString(),
+        };
+
+        const { data, error } = await client
+          .from(MIXES_TABLE)
+          .upsert(payload)
+          .select()
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data) return mapDbMixToSavedMix(data);
+      } catch (e) {
+        console.error('Failed to persist mix in database', e);
+      }
+    }
+  }
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const allMixes: SavedMix[] = raw ? JSON.parse(raw) : [];
 
-    const sanitizedIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
-
-      const newMix: SavedMix = {
-        id: generateUuid(),
+    const newMix: SavedMix = {
+      id: generateUuid(),
       userId,
       timestamp: Date.now(),
       ingredients: sanitizedIngredients,
-      name: name || "Мой микс",
+      name: name || 'Мой микс',
       isFavorite: false,
       venue,
     };
@@ -248,21 +292,38 @@ export const saveMixToHistory = (userId: number, ingredients: MixIngredient[], n
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedHistory));
     return newMix;
   } catch (e) {
-    console.error("Error saving mix:", e);
-    const fallbackIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
+    console.error('Error saving mix locally:', e);
     return {
-        id: generateUuid(),
-        userId,
-        timestamp: Date.now(),
-        ingredients: fallbackIngredients,
-        name: name || "Мой микс",
-        isFavorite: false,
-        venue,
+      id: generateUuid(),
+      userId,
+      timestamp: Date.now(),
+      ingredients: sanitizedIngredients,
+      name: name || 'Мой микс',
+      isFavorite: false,
+      venue,
     };
   }
 };
 
-export const getHistory = (userId: number): SavedMix[] => {
+export const getHistory = async (userId: number): Promise<SavedMix[]> => {
+  if (isDatabaseConfigured()) {
+    const client = getDatabaseClient();
+    if (client) {
+      try {
+        const { data, error } = await client
+          .from(MIXES_TABLE)
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (data) return data.map(mapDbMixToSavedMix);
+      } catch (e) {
+        console.error('Failed to load mixes from database', e);
+      }
+    }
+  }
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -273,33 +334,66 @@ export const getHistory = (userId: number): SavedMix[] => {
   }
 };
 
-export const toggleFavoriteMix = (mixId: string): SavedMix[] => {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return [];
-        let allMixes: SavedMix[] = JSON.parse(raw);
-        allMixes = allMixes.map(m => {
-            if (m.id === mixId) {
-                return { ...m, isFavorite: !m.isFavorite };
-            }
-            return m;
-        });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(allMixes));
-        return allMixes;
-    } catch (e) {
-        return [];
+export const toggleFavoriteMix = async (
+  mixId: string,
+  nextValue: boolean,
+  userId?: number,
+): Promise<SavedMix[]> => {
+  if (isDatabaseConfigured()) {
+    const client = getDatabaseClient();
+    if (client && userId) {
+      try {
+        const { error } = await client
+          .from(MIXES_TABLE)
+          .update({ is_favorite: nextValue })
+          .eq('id', mixId)
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      } catch (e) {
+        console.error('Failed to toggle favorite in database', e);
+      }
     }
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    let allMixes: SavedMix[] = JSON.parse(raw);
+    allMixes = allMixes.map(m => (m.id === mixId ? { ...m, isFavorite: nextValue } : m));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allMixes));
+    return allMixes;
+  } catch (e) {
+    return [];
+  }
 };
 
-export const deleteMix = (mixId: string): SavedMix[] => {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return [];
-        let allMixes: SavedMix[] = JSON.parse(raw);
-        allMixes = allMixes.filter(m => m.id !== mixId);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(allMixes));
-        return allMixes;
-    } catch (e) {
-        return [];
+export const deleteMix = async (mixId: string, userId?: number): Promise<SavedMix[]> => {
+  if (isDatabaseConfigured()) {
+    const client = getDatabaseClient();
+    if (client && userId) {
+      try {
+        const { error } = await client
+          .from(MIXES_TABLE)
+          .delete()
+          .eq('id', mixId)
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      } catch (e) {
+        console.error('Failed to delete mix in database', e);
+      }
     }
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    let allMixes: SavedMix[] = JSON.parse(raw);
+    allMixes = allMixes.filter(m => m.id !== mixId);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allMixes));
+    return allMixes;
+  } catch (e) {
+    return [];
+  }
 };
