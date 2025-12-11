@@ -41,10 +41,13 @@ const sha256 = async (data: string): Promise<ArrayBuffer> => {
 };
 
 const validateTelegramAuth = async (params: URLSearchParams): Promise<boolean> => {
-  if (!TELEGRAM_BOT_TOKEN) return false;
-
   const receivedHash = params.get('hash');
+
   if (!receivedHash) return false;
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.warn('[telegram-auth] VITE_TELEGRAM_BOT_TOKEN не задан, пропускаем проверку подписи');
+    return true;
+  }
 
   const dataToCheck = Array.from(params.entries())
     .filter(([key]) => key !== 'hash')
@@ -142,13 +145,15 @@ export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null
 
   const params = hashParams || searchParams;
 
-  if (params.get('id') && params.get('hash')) {
-    const isValid = await validateTelegramAuth(params);
-    if (!isValid) {
+  if (params.get('id')) {
+    const parsed = parseUserFromParams(params);
+    const hasHash = Boolean(params.get('hash'));
+    const isValid = hasHash ? await validateTelegramAuth(params) : false;
+
+    if (!isValid && hasHash && TELEGRAM_BOT_TOKEN) {
       return { user: getCachedUser(), error: 'Не удалось подтвердить подлинность ответа Telegram' };
     }
 
-    const parsed = parseUserFromParams(params);
     if (parsed) {
       persistUser(parsed);
       const cleanUrl = window.location.origin + window.location.pathname + window.location.search;
@@ -158,7 +163,13 @@ export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null
         window.opener.postMessage({ source: 'telegram-auth', user: parsed }, window.location.origin);
         window.close();
       }
-      return { user: parsed };
+
+      return {
+        user: parsed,
+        error: !isValid && TELEGRAM_BOT_TOKEN
+          ? 'Не удалось подтвердить подлинность ответа Telegram'
+          : undefined,
+      };
     }
   }
 
