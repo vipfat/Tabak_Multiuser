@@ -20,8 +20,11 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
   const [lastError, setLastError] = useState('');
 
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
+  const httpsOnly = import.meta.env.VITE_TELEGRAM_HTTPS_ONLY !== 'false';
   const authUrl = useMemo(() => getTelegramAuthUrl(), []);
-  const isSecure = typeof window !== 'undefined' ? window.location.protocol === 'https:' : true;
+  const isSecure = typeof window !== 'undefined'
+    ? !httpsOnly || window.location.protocol === 'https:'
+    : true;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
