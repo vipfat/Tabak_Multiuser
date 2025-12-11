@@ -1,200 +1,62 @@
-import { TelegramUser } from '../types';
+// telegramService.ts
+export function startTelegramLogin() {
+  const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
 
-declare global {
-  interface Window {
-    Telegram: {
-      WebApp: {
-        initData: string;
-        initDataUnsafe: {
-          user?: TelegramUser;
-          start_param?: string;
-        };
-        ready: () => void;
-        expand: () => void;
-        close: () => void;
-        MainButton: {
-            text: string;
-            show: () => void;
-            hide: () => void;
-            onClick: (cb: () => void) => void;
-        }
-        themeParams: any;
-        isExpanded: boolean;
-        viewportHeight: number;
-      };
-    };
+  const url = `https://oauth.telegram.org/auth?bot_id=${import.meta.env.VITE_TELEGRAM_BOT_ID
+    }&origin=${encodeURIComponent(window.location.origin)}&embed=1&request_access=write`;
+
+  const authWindow = window.open(
+    url,
+    "_blank",
+    "width=500,height=700"
+  );
+
+  const listener = (event: MessageEvent) => {
+    if (event.origin !== "https://oauth.telegram.org") return;
+
+    const data = event.data;
+
+    if (data.user) {
+      // Сохранить в localStorage
+      localStorage.setItem("telegram_web_user", JSON.stringify(data.user));
+
+      // Передать App.tsx
+      window.postMessage(
+        { source: "telegram-auth", user: data.user },
+        window.location.origin
+      );
+    }
+
+    if (data.error) {
+      window.postMessage(
+        { source: "telegram-auth", error: data.error },
+        window.location.origin
+      );
+    }
+
+    window.removeEventListener("message", listener);
+    authWindow?.close();
+  };
+
+  window.addEventListener("message", listener);
+}
+
+
+// Возвращаем пользователя из localStorage
+export async function resolveTelegramUser() {
+  try {
+    const raw = localStorage.getItem("telegram_web_user");
+    if (!raw) return { user: null, error: null };
+
+    const user = JSON.parse(raw);
+    return { user, error: null };
+  } catch (e) {
+    return { user: null, error: "Ошибка чтения профиля" };
   }
 }
 
-const TELEGRAM_BOT_ID = import.meta.env.VITE_TELEGRAM_BOT_ID;
-const TELEGRAM_BOT_TOKEN = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
-const AUTH_STORAGE_KEY = 'telegram_web_user';
 
-const bufferToHex = (buffer: ArrayBuffer): string =>
-  Array.from(new Uint8Array(buffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-
-const sha256 = async (data: string): Promise<ArrayBuffer> => {
-  const enc = new TextEncoder();
-  return crypto.subtle.digest('SHA-256', enc.encode(data));
-};
-
-const validateTelegramAuth = async (params: URLSearchParams): Promise<boolean> => {
-  const receivedHash = params.get('hash');
-
-  if (!receivedHash) return false;
-  if (!TELEGRAM_BOT_TOKEN) {
-    console.warn('[telegram-auth] VITE_TELEGRAM_BOT_TOKEN не задан, пропускаем проверку подписи');
-    return true;
-  }
-
-  const dataToCheck = Array.from(params.entries())
-    .filter(([key]) => key !== 'hash')
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-
-  const secretKey = await sha256(TELEGRAM_BOT_TOKEN);
-  const key = await crypto.subtle.importKey('raw', secretKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(dataToCheck));
-  const hex = bufferToHex(signature);
-
-  return hex === receivedHash;
-};
-
-const getCachedUser = (): TelegramUser | null => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as TelegramUser) : null;
-  } catch (e) {
-    return null;
-  }
-};
-
-const persistUser = (user: TelegramUser) => {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-  } catch (e) {
-    // ignore
-  }
-};
-
-const parseUserFromParams = (params: URLSearchParams): TelegramUser | null => {
-  if (!params.get('id')) return null;
-  return {
-    id: Number(params.get('id')),
-    first_name: params.get('first_name') || 'Пользователь',
-    last_name: params.get('last_name') || undefined,
-    username: params.get('username') || undefined,
-    language_code: params.get('language_code') || undefined,
-  };
-};
-
-export const buildTelegramAuthUrl = (redirectUri?: string): string | null => {
-  if (!TELEGRAM_BOT_ID || typeof window === 'undefined') return null;
-
-  const redirect = redirectUri || window.location.href;
-  const origin = window.location.origin;
-
-  const base = new URL('https://oauth.telegram.org/auth');
-  base.searchParams.set('bot_id', TELEGRAM_BOT_ID);
-  base.searchParams.set('origin', origin);
-  base.searchParams.set('request_access', 'write');
-  base.searchParams.set('embed', '1');
-  base.searchParams.set('redirect_uri', redirect);
-
-  return base.toString();
-};
-
-/**
- * Retrieves the current Telegram user by prioritizing embedded WebApp data,
- * then OAuth callback parameters, and finally cached session data.
- */
-export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null; error?: string }> => {
-  if (typeof window === 'undefined') return { user: null };
-
-  if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
-    window.Telegram.WebApp.ready();
-    window.Telegram.WebApp.expand();
-    return { user: window.Telegram.WebApp.initDataUnsafe.user };
-  }
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const hashParams = (() => {
-    const hash = window.location.hash;
-    const match = hash.match(/tgAuthResult=(.*)$/);
-    if (!match) return null;
-
-    try {
-      const decoded = decodeURIComponent(match[1]);
-      const data = JSON.parse(decoded);
-      const params = new URLSearchParams();
-      Object.entries(data).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          params.set(key, String(value));
-        }
-      });
-      return params;
-    } catch (e) {
-      return null;
-    }
-  })();
-
-  const params = hashParams || searchParams;
-
-  if (params.get('id')) {
-    const parsed = parseUserFromParams(params);
-    const hasHash = Boolean(params.get('hash'));
-    const isValid = hasHash ? await validateTelegramAuth(params) : false;
-
-    if (!isValid && hasHash && TELEGRAM_BOT_TOKEN) {
-      return { user: getCachedUser(), error: 'Не удалось подтвердить подлинность ответа Telegram' };
-    }
-
-    if (parsed) {
-      persistUser(parsed);
-      const cleanUrl = window.location.origin + window.location.pathname + window.location.search;
-      window.history.replaceState({}, document.title, cleanUrl);
-
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({ source: 'telegram-auth', user: parsed }, window.location.origin);
-        window.close();
-      }
-
-      return {
-        user: parsed,
-        error: !isValid && TELEGRAM_BOT_TOKEN
-          ? 'Не удалось подтвердить подлинность ответа Telegram'
-          : undefined,
-      };
-    }
-  }
-
-  return { user: getCachedUser() };
-};
-
-export const startTelegramLogin = () => {
-  if (typeof window === 'undefined') return;
-  const url = buildTelegramAuthUrl();
-  if (!url) {
-    alert('Bot ID не настроен. Проверьте переменную VITE_TELEGRAM_BOT_ID');
-    return;
-  }
-
-  const popup = window.open(url, '_blank', 'width=420,height=720');
-  if (!popup) {
-    window.location.href = url;
-  }
-};
-
-export const logoutTelegramUser = () => {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(AUTH_STORAGE_KEY);
-};
-
-export const isTelegramWebApp = (): boolean => {
-    return !!(typeof window !== 'undefined' && window.Telegram?.WebApp?.initData);
-};
+// Logout
+export function logoutTelegramUser() {
+  localStorage.removeItem("telegram_web_user");
+}
