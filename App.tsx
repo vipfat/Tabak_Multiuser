@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin } from 'lucide-react';
 import { Flavor, MixIngredient, TelegramUser, SavedMix, Venue } from './types';
 import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
-import { resolveTelegramUser, startTelegramLogin, logoutTelegramUser } from './services/telegramService';
+import { getTelegramUser } from './services/telegramService';
 import {
   saveMixToHistory,
   fetchFlavors,
@@ -23,8 +23,6 @@ import VenueSelector from './components/VenueSelector';
 const App: React.FC = () => {
   // User State
   const [user, setUser] = useState<TelegramUser | null>(null);
-  const [authError, setAuthError] = useState('');
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   // Venue State
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -96,15 +94,9 @@ const App: React.FC = () => {
 
   // Initialization
   useEffect(() => {
-    const init = async () => {
-      setIsAuthLoading(true);
-      const { user: resolvedUser, error } = await resolveTelegramUser();
-      if (error) setAuthError(error);
-      if (resolvedUser) setUser(resolvedUser);
-      setIsAuthLoading(false);
-    };
+    const tgUser = getTelegramUser();
+    setUser(tgUser);
 
-    init();
     loadVenues();
   }, [loadVenues]);
 
@@ -289,11 +281,8 @@ const App: React.FC = () => {
 
   // --- History & Actions ---
 
-  const handleSaveMix = async () => {
-    if (!user || mix.length === 0) {
-        alert('Авторизуйтесь через Telegram, чтобы сохранять миксы');
-        return;
-    }
+  const handleSaveMix = () => {
+    if (!user || mix.length === 0) return;
 
     let finalName = mixName.trim();
     if (!finalName) {
@@ -303,15 +292,15 @@ const App: React.FC = () => {
 
     const sanitizedMix: MixIngredient[] = mix.map(({ isMissing, ...rest }) => ({ ...rest }));
 
-    await saveMixToHistory(user.id, sanitizedMix, finalName, selectedVenue);
+    saveMixToHistory(user.id, sanitizedMix, finalName, selectedVenue);
     alert("Микс сохранен в историю!");
   };
 
-  const handleShowMaster = async () => {
+  const handleShowMaster = () => {
     if (mix.length === 0) return;
     if (user) {
         const sanitizedMix: MixIngredient[] = mix.map(({ isMissing, ...rest }) => ({ ...rest }));
-        await saveMixToHistory(user.id, sanitizedMix, mixName || "Заказ мастеру", selectedVenue);
+        saveMixToHistory(user.id, sanitizedMix, mixName || "Заказ мастеру", selectedVenue);
     }
     setIsMasterModeOpen(true);
   };
@@ -361,19 +350,6 @@ const App: React.FC = () => {
       setVerifiedPin('');
   }
 
-  const handleOpenHistory = () => {
-    if (!user) {
-        startTelegramLogin();
-        return;
-    }
-    setIsHistoryOpen(true);
-  };
-
-  const handleLogout = () => {
-    logoutTelegramUser();
-    setUser(null);
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 pb-28 font-sans selection:bg-emerald-500 selection:text-white">
 
@@ -413,12 +389,11 @@ const App: React.FC = () => {
                 <span className="text-xs font-bold hidden sm:block">{selectedVenue ? selectedVenue.title : 'Выбрать место'}</span>
               </button>
               <button
-                onClick={handleOpenHistory}
+                onClick={() => setIsHistoryOpen(true)}
                 className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
-                disabled={isAuthLoading}
               >
                 <UserCircle size={20} />
-                <span className="text-xs font-bold hidden sm:block">{user?.first_name || 'Войти'}</span>
+                <span className="text-xs font-bold hidden sm:block">{user?.first_name}</span>
               </button>
 
               <button 
@@ -434,42 +409,6 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-lg mx-auto px-4 pt-6">
-
-        {authError && (
-          <div className="mb-4 p-3 rounded-lg border border-red-500/50 bg-red-900/10 text-red-200 text-sm">
-            {authError}
-          </div>
-        )}
-
-        {!user && !isAuthLoading && (
-          <div className="mb-6 p-4 rounded-xl border border-slate-800 bg-slate-900/80 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-slate-300 font-semibold">Личный кабинет</p>
-              <p className="text-xs text-slate-400">Войдите через Telegram, чтобы сохранять историю и любимые миксы в облаке</p>
-            </div>
-            <button
-              onClick={startTelegramLogin}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-colors"
-            >
-              Войти
-            </button>
-          </div>
-        )}
-
-        {user && (
-          <div className="mb-6 p-4 rounded-xl border border-emerald-800/50 bg-emerald-900/10 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-emerald-300 font-semibold">Привет, {user.first_name}!</p>
-              <p className="text-xs text-emerald-200/80">История и избранное теперь синхронизируются с вашим аккаунтом</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold transition-colors"
-            >
-              Выйти
-            </button>
-          </div>
-        )}
 
         {selectedVenue && (
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6 flex items-center justify-between gap-3">
