@@ -59,5 +59,23 @@ Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin
 
    create index if not exists clients_last_seen_at_idx on public.clients (last_seen_at desc);
    ```
+
+   Supabase UI может показывать `int8` вместо `bigint` — это один и тот же тип, его достаточно для Telegram ID.
+
+   Если в проекте включён RLS, добавьте политики, иначе анонимный ключ не сможет записывать клиентов и миксы:
+
+   ```sql
+   -- clients: позволяем вставку/апдейт от любого (анон) запроса
+   create policy clients_insert on public.clients
+     for insert to anon using (true) with check (true);
+   create policy clients_update on public.clients
+     for update to anon using (true) with check (true);
+
+   -- user_mixes: читаем/пишем только свои записи
+   create policy user_mixes_select on public.user_mixes
+     for select to anon using (auth.role() = 'anon');
+   create policy user_mixes_insert on public.user_mixes
+     for insert to anon with check (auth.role() = 'anon');
+   ```
 4. Заполните `.env.local` нужными переменными, затем выполните `npm run dev`.
 5. После входа через Telegram история и избранные миксы сохраняются в `user_mixes` и доступны с любого устройства.

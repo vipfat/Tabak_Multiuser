@@ -39,6 +39,14 @@ export const syncTelegramClient = async (user: TelegramUser): Promise<SyncResult
         };
       }
 
+      // 42501 – RLS violation (policies not configured for anon key)
+      if ((error as any)?.code === '42501') {
+        return {
+          success: false,
+          error: 'Supabase отверг вставку в clients: разрешите insert/upsert для анонимного ключа или используйте сервисный ключ',
+        };
+      }
+
       throw error;
     }
 
