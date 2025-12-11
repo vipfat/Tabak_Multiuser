@@ -4,6 +4,7 @@ import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw
 import { Flavor, MixIngredient, TelegramUser, SavedMix, Venue } from './types';
 import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
 import { resolveTelegramUser, startTelegramLogin, logoutTelegramUser } from './services/telegramService';
+import { syncTelegramClient } from './services/clientService';
 import {
   saveMixToHistory,
   fetchFlavors,
@@ -151,6 +152,23 @@ const App: React.FC = () => {
       window.removeEventListener('storage', handleStorage);
     };
   }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const persistClient = async () => {
+      if (!user) return;
+      const result = await syncTelegramClient(user);
+      if (!result.success && !isCancelled) {
+        setAuthError(result.error || 'Не удалось сохранить профиль');
+      }
+    };
+
+    persistClient();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!selectedVenue) return;

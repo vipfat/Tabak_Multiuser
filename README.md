@@ -34,6 +34,7 @@ Expected schema:
 - `flavors`: `id`, `venue_id`, `name`, `brand`, `description`, `color`, `is_available`
 - `brands`: `name`, `venue_id`
 - `user_mixes`: `id` (uuid), `user_id` (bigint), `name`, `ingredients` (jsonb), `is_favorite` (bool, default false), `venue` (jsonb), `created_at` (timestamptz, default now())
+- `clients`: `id` (bigint, PK), `first_name`, `last_name`, `username`, `language_code`, `last_seen_at` (timestamptz, default now())
 
 Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin_pin`.
 
@@ -44,6 +45,19 @@ Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin
 3. В Supabase создайте таблицу `user_mixes` (см. схему выше) и индекс по `user_id` для быстрых выборок:
    ```sql
    create index user_mixes_user_id_idx on public.user_mixes (user_id);
+   ```
+   Для авторизации по Telegram также нужна таблица клиентов:
+   ```sql
+   create table if not exists public.clients (
+     id bigint primary key,
+     first_name text not null,
+     last_name text,
+     username text,
+     language_code text,
+     last_seen_at timestamptz default now()
+   );
+
+   create index if not exists clients_last_seen_at_idx on public.clients (last_seen_at desc);
    ```
 4. Заполните `.env.local` нужными переменными, затем выполните `npm run dev`.
 5. После входа через Telegram история и избранные миксы сохраняются в `user_mixes` и доступны с любого устройства.
