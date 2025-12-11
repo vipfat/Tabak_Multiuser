@@ -19,6 +19,7 @@ import AdminPanel from './components/AdminPanel';
 import MasterMode from './components/MasterMode';
 import HistoryPanel from './components/HistoryPanel';
 import VenueSelector from './components/VenueSelector';
+import TelegramAuthCard from './components/TelegramAuthCard';
 
 const App: React.FC = () => {
   // User State
@@ -99,6 +100,67 @@ const App: React.FC = () => {
 
     loadVenues();
   }, [loadVenues]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+
+      if (data?.source === 'telegram-auth') {
+        if (data.user) {
+          setUser(data.user);
+          setAuthError('');
+        }
+
+        if (data.error) {
+          setAuthError(data.error);
+        }
+
+        setIsAuthLoading(false);
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== 'telegram_web_user') return;
+
+      if (event.newValue) {
+        try {
+          setUser(JSON.parse(event.newValue) as TelegramUser);
+        } catch (e) {
+          // ignore parsing error
+        }
+      } else {
+        setUser(null);
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('message', handleAuthMessage);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const persistClient = async () => {
+      if (!user) return;
+      const result = await syncTelegramClient(user);
+      if (!result.success && !isCancelled) {
+        setAuthError(result.error || 'Не удалось сохранить профиль');
+      }
+    };
+
+    persistClient();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!selectedVenue) return;

@@ -1,4 +1,5 @@
-import { TelegramUser } from '../types';
+// telegramService.ts
+const AUTH_PATH = '/api/auth/telegram/callback';
 
 declare global {
   interface Window {
@@ -45,6 +46,8 @@ export const getTelegramUser = (): TelegramUser => {
   };
 };
 
-export const isTelegramWebApp = (): boolean => {
-    return !!(typeof window !== 'undefined' && window.Telegram?.WebApp?.initData);
-};
+// Logout
+export function logoutTelegramUser() {
+  localStorage.removeItem("telegram_web_user");
+  localStorage.removeItem('telegram_session_token');
+}
