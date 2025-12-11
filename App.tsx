@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin } from 'lucide-react';
 import { Flavor, MixIngredient, TelegramUser, SavedMix, Venue } from './types';
 import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
-import { getTelegramUser } from './services/telegramService';
+import { getTelegramUser, logoutTelegramUser } from './services/telegramService';
 import {
   saveMixToHistory,
   fetchFlavors,
@@ -12,6 +12,7 @@ import {
   updateAdminPin
 } from './services/storageService';
 import { fetchVenues } from './services/venueService';
+import { syncTelegramClient } from './services/clientService';
 import BowlChart from './components/BowlChart';
 import FlavorSelector from './components/FlavorSelector';
 import MixControls from './components/MixControls';
@@ -24,6 +25,7 @@ import TelegramAuthCard from './components/TelegramAuthCard';
 const App: React.FC = () => {
   // User State
   const [user, setUser] = useState<TelegramUser | null>(null);
+  const [authError, setAuthError] = useState('');
 
   // Venue State
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -75,6 +77,22 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleAuthSuccess = (telegramUser: TelegramUser) => {
+    setUser(telegramUser);
+    setAuthError('');
+  };
+
+  const handleAuthFailure = (message: string) => {
+    setAuthError(message);
+  };
+
+  const handleLogout = () => {
+    logoutTelegramUser();
+    setUser(null);
+    setMix([]);
+    setMixName('');
+  };
+
   const loadData = useCallback(async () => {
       if (!selectedVenue) return;
       setIsLoading(true);
@@ -117,8 +135,6 @@ const App: React.FC = () => {
         if (data.error) {
           setAuthError(data.error);
         }
-
-        setIsAuthLoading(false);
       }
     };
 
@@ -343,8 +359,12 @@ const App: React.FC = () => {
 
   // --- History & Actions ---
 
-  const handleSaveMix = () => {
-    if (!user || mix.length === 0) return;
+  const handleSaveMix = async () => {
+    if (!user) {
+      alert('Авторизуйтесь через Telegram, чтобы сохранять миксы');
+      return;
+    }
+    if (mix.length === 0) return;
 
     let finalName = mixName.trim();
     if (!finalName) {
@@ -354,15 +374,18 @@ const App: React.FC = () => {
 
     const sanitizedMix: MixIngredient[] = mix.map(({ isMissing, ...rest }) => ({ ...rest }));
 
-    saveMixToHistory(user.id, sanitizedMix, finalName, selectedVenue);
+    await saveMixToHistory(user.id, sanitizedMix, finalName, selectedVenue);
     alert("Микс сохранен в историю!");
   };
 
-  const handleShowMaster = () => {
+  const handleShowMaster = async () => {
     if (mix.length === 0) return;
     if (user) {
         const sanitizedMix: MixIngredient[] = mix.map(({ isMissing, ...rest }) => ({ ...rest }));
-        saveMixToHistory(user.id, sanitizedMix, mixName || "Заказ мастеру", selectedVenue);
+        await saveMixToHistory(user.id, sanitizedMix, mixName || "Заказ мастеру", selectedVenue);
+    } else {
+      alert('Авторизуйтесь через Telegram, чтобы отправлять миксы мастеру');
+      return;
     }
     setIsMasterModeOpen(true);
   };
@@ -455,7 +478,7 @@ const App: React.FC = () => {
                 className="p-2 bg-slate-900 text-emerald-400 rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-2"
               >
                 <UserCircle size={20} />
-                <span className="text-xs font-bold hidden sm:block">{user?.first_name}</span>
+                <span className="text-xs font-bold hidden sm:block">{user ? user.first_name : 'Войти'}</span>
               </button>
 
               <button 
@@ -588,14 +611,16 @@ const App: React.FC = () => {
       />
 
       {/* History Side Panel */}
-      {user && (
-        <HistoryPanel 
-            isOpen={isHistoryOpen}
-            onClose={() => setIsHistoryOpen(false)}
-            user={user}
-            onLoadMix={handleLoadFromHistory}
-        />
-      )}
+      <HistoryPanel
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          user={user}
+          onLoadMix={handleLoadFromHistory}
+          onAuthSuccess={handleAuthSuccess}
+          onAuthError={handleAuthFailure}
+          authError={authError}
+          onLogout={handleLogout}
+      />
 
       {/* Master Mode Fullscreen */}
       {user && (
