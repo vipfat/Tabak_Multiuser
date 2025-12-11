@@ -1,44 +1,51 @@
 // telegramService.ts
-export function startTelegramLogin() {
-  const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
+const AUTH_PATH = '/api/auth/telegram/callback';
 
-  const url = `https://oauth.telegram.org/auth?bot_id=${import.meta.env.VITE_TELEGRAM_BOT_ID
-    }&origin=${encodeURIComponent(window.location.origin)}&embed=1&request_access=write`;
+const backendBase = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+const authEndpoint = `${backendBase}${AUTH_PATH}`;
 
-  const authWindow = window.open(
-    url,
-    "_blank",
-    "width=500,height=700"
+export function getTelegramAuthUrl() {
+  return authEndpoint;
+}
+
+export async function submitTelegramProfile(payload: Record<string, any>) {
+  const response = await fetch(authEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    let message = 'Не удалось подтвердить Telegram-профиль';
+    try {
+      const error = await response.json();
+      if (error?.error) message = error.error;
+    } catch (e) {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const data = await response.json();
+  if (data?.user) {
+    localStorage.setItem('telegram_web_user', JSON.stringify(data.user));
+  }
+  if (data?.token) {
+    localStorage.setItem('telegram_session_token', data.token);
+  }
+
+  window.postMessage(
+    { source: 'telegram-auth', user: data?.user, token: data?.token },
+    window.location.origin,
   );
 
-  const listener = (event: MessageEvent) => {
-    if (event.origin !== "https://oauth.telegram.org") return;
+  return data;
+}
 
-    const data = event.data;
-
-    if (data.user) {
-      // Сохранить в localStorage
-      localStorage.setItem("telegram_web_user", JSON.stringify(data.user));
-
-      // Передать App.tsx
-      window.postMessage(
-        { source: "telegram-auth", user: data.user },
-        window.location.origin
-      );
-    }
-
-    if (data.error) {
-      window.postMessage(
-        { source: "telegram-auth", error: data.error },
-        window.location.origin
-      );
-    }
-
-    window.removeEventListener("message", listener);
-    authWindow?.close();
-  };
-
-  window.addEventListener("message", listener);
+export function startTelegramLogin() {
+  if (typeof document === 'undefined') return;
+  const widget = document.getElementById('telegram-login-widget');
+  if (widget) widget.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 
@@ -59,4 +66,5 @@ export async function resolveTelegramUser() {
 // Logout
 export function logoutTelegramUser() {
   localStorage.removeItem("telegram_web_user");
+  localStorage.removeItem('telegram_session_token');
 }

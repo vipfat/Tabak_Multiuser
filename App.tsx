@@ -20,6 +20,7 @@ import AdminPanel from './components/AdminPanel';
 import MasterMode from './components/MasterMode';
 import HistoryPanel from './components/HistoryPanel';
 import VenueSelector from './components/VenueSelector';
+import TelegramAuthCard from './components/TelegramAuthCard';
 
 const App: React.FC = () => {
   // User State
@@ -436,6 +437,15 @@ const App: React.FC = () => {
     setUser(null);
   };
 
+  const handleTelegramSuccess = (authenticatedUser: TelegramUser) => {
+    setUser(authenticatedUser);
+    setAuthError('');
+  };
+
+  const handleTelegramError = (message: string) => {
+    setAuthError(message);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 pb-28 font-sans selection:bg-emerald-500 selection:text-white">
 
@@ -509,12 +519,7 @@ const App: React.FC = () => {
               <p className="text-sm text-slate-300 font-semibold">Личный кабинет</p>
               <p className="text-xs text-slate-400">Войдите через Telegram, чтобы сохранять историю и любимые миксы в облаке</p>
             </div>
-            <button
-              onClick={startTelegramLogin}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-colors"
-            >
-              Войти
-            </button>
+            <TelegramAuthCard onSuccess={handleTelegramSuccess} onError={handleTelegramError} />
           </div>
         )}
 

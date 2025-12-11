@@ -27,6 +27,7 @@ The app now reads and writes venue data directly from Supabase instead of Google
 - `VITE_SUPABASE_ANON_KEY` – anonymous key with access to the `venues`, `flavors`, and `brands` tables
 - `VITE_TELEGRAM_BOT_ID` – бот, который будет использоваться для OAuth
 - `VITE_TELEGRAM_BOT_TOKEN` – токен бота, нужен для проверки подписи ответа Telegram (хранится только в клиенте, поэтому держите бота техническим)
+- `VITE_BACKEND_URL` – базовый URL API, если эндпоинт `/api/auth/telegram/callback` работает на другом домене (по умолчанию текущий)
 
 Expected schema:
 
@@ -79,3 +80,9 @@ Each venue keeps its own stock and PIN; saving flavors does not overwrite `admin
    ```
 4. Заполните `.env.local` нужными переменными, затем выполните `npm run dev`.
 5. После входа через Telegram история и избранные миксы сохраняются в `user_mixes` и доступны с любого устройства.
+
+### Telegram callback endpoint
+
+В репозитории есть минимальный валидатор подписи Telegram: `node server/telegramAuth.js`. Он поднимает эндпоинт `/api/auth/telegram/callback`,
+который проверяет HMAC (secret_key = sha256(BOT_TOKEN)), ограничивает `auth_date` 10 минутами и требует HTTPS (`X-Forwarded-Proto: https`).
+Установите `TELEGRAM_BOT_TOKEN` в окружении и проксируйте этот путь с HTTPS-домена, совпадающего с настроенным в BotFather.
