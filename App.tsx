@@ -109,6 +109,50 @@ const App: React.FC = () => {
   }, [loadVenues]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+
+      if (data?.source === 'telegram-auth') {
+        if (data.user) {
+          setUser(data.user);
+          setAuthError('');
+        }
+
+        if (data.error) {
+          setAuthError(data.error);
+        }
+
+        setIsAuthLoading(false);
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== 'telegram_web_user') return;
+
+      if (event.newValue) {
+        try {
+          setUser(JSON.parse(event.newValue) as TelegramUser);
+        } catch (e) {
+          // ignore parsing error
+        }
+      } else {
+        setUser(null);
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('message', handleAuthMessage);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selectedVenue) return;
     loadData();
   }, [loadData, selectedVenue]);
