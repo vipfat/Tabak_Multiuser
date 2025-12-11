@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { RefreshCcw } from 'lucide-react';
 import { TelegramUser } from '../types';
-import { submitTelegramProfile, getTelegramAuthUrl } from '../services/telegramService';
+import { persistTelegramUser } from '../services/telegramService';
 
 type TelegramCallbackUser = TelegramUser & {
   photo_url?: string;
@@ -21,10 +21,18 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
 
   const botUsername = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
   const httpsOnly = import.meta.env.VITE_TELEGRAM_HTTPS_ONLY !== 'false';
-  const authUrl = useMemo(() => getTelegramAuthUrl(), []);
   const isSecure = typeof window !== 'undefined'
     ? !httpsOnly || window.location.protocol === 'https:'
     : true;
+
+  const sanitizedUser = useMemo(() => (user: TelegramCallbackUser): TelegramUser => ({
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    username: user.username,
+    language_code: user.language_code,
+    photo_url: user.photo_url,
+  }), []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -34,7 +42,7 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
       return;
     }
 
-    const handler = async (user: TelegramCallbackUser) => {
+    const handleAuth = (payload: TelegramCallbackUser) => {
       if (!isSecure) {
         const warning = 'Авторизация доступна только по HTTPS';
         setLastError(warning);
@@ -44,13 +52,13 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
 
       setIsProcessing(true);
       setLastError('');
+
       try {
-        const result = await submitTelegramProfile(user);
-        if (result.user) {
-          onSuccess(result.user);
-        }
+        const user = sanitizedUser(payload);
+        persistTelegramUser(user);
+        onSuccess(user);
       } catch (e: any) {
-        const message = e?.message || 'Не удалось подтвердить данные Telegram';
+        const message = e?.message || 'Не удалось обработать данные Telegram';
         setLastError(message);
         onError(message);
       } finally {
@@ -58,8 +66,7 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
       }
     };
 
-    // Expose callback for Telegram widget
-    (window as any).TelegramLoginWidgetCallback = handler;
+    (window as any).onTelegramAuth = handleAuth;
 
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?21';
@@ -69,8 +76,7 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
     script.dataset.userpic = 'true';
     script.dataset.radius = '8';
     script.dataset.requestAccess = 'write';
-    script.dataset.authUrl = authUrl;
-    script.dataset.onauth = 'TelegramLoginWidgetCallback(user)';
+    script.dataset.onauth = 'onTelegramAuth(user)';
 
     const container = document.getElementById('telegram-login-widget');
     if (container) {
@@ -79,10 +85,10 @@ const TelegramAuthCard: React.FC<Props> = ({ onSuccess, onError }) => {
     }
 
     return () => {
-      delete (window as any).TelegramLoginWidgetCallback;
+      delete (window as any).onTelegramAuth;
       if (container) container.innerHTML = '';
     };
-  }, [authUrl, botUsername, isSecure, onError, onSuccess, widgetSeed]);
+  }, [botUsername, isSecure, onError, onSuccess, sanitizedUser, widgetSeed]);
 
   const handleReload = () => setWidgetSeed((prev) => prev + 1);
 
