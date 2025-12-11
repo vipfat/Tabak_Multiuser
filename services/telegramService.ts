@@ -60,29 +60,6 @@ const validateTelegramAuth = async (params: URLSearchParams): Promise<boolean> =
   return hex === receivedHash;
 };
 
-const parseHashAuthParams = (): URLSearchParams | null => {
-  if (typeof window === 'undefined') return null;
-
-  const hash = window.location.hash || '';
-  const match = hash.match(/tgAuthResult=([^&]+)/);
-  if (!match?.[1]) return null;
-
-  try {
-    const raw = decodeURIComponent(match[1]);
-    const parsed = JSON.parse(raw);
-    const params = new URLSearchParams();
-    Object.entries(parsed).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.set(key, String(value));
-      }
-    });
-    return params;
-  } catch (e) {
-    console.error('Failed to parse tgAuthResult hash', e);
-    return null;
-  }
-};
-
 const getCachedUser = (): TelegramUser | null => {
   if (typeof window === 'undefined') return null;
   try {
@@ -143,19 +120,16 @@ export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null
   }
 
   const params = new URLSearchParams(window.location.search);
-  const hashParams = parseHashAuthParams();
-  const authParams = hashParams?.get('id') ? hashParams : params;
-
-  if (authParams.get('id') && authParams.get('hash')) {
-    const isValid = await validateTelegramAuth(authParams);
+  if (params.get('id') && params.get('hash')) {
+    const isValid = await validateTelegramAuth(params);
     if (!isValid) {
       return { user: getCachedUser(), error: 'Не удалось подтвердить подлинность ответа Telegram' };
     }
 
-    const parsed = parseUserFromParams(authParams);
+    const parsed = parseUserFromParams(params);
     if (parsed) {
       persistUser(parsed);
-      const cleanUrl = window.location.origin + window.location.pathname;
+      const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
       window.history.replaceState({}, document.title, cleanUrl);
       return { user: parsed };
     }
