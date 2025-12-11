@@ -119,7 +119,29 @@ export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null
     return { user: window.Telegram.WebApp.initDataUnsafe.user };
   }
 
-  const params = new URLSearchParams(window.location.search);
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = (() => {
+    const hash = window.location.hash;
+    const match = hash.match(/tgAuthResult=(.*)$/);
+    if (!match) return null;
+
+    try {
+      const decoded = decodeURIComponent(match[1]);
+      const data = JSON.parse(decoded);
+      const params = new URLSearchParams();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.set(key, String(value));
+        }
+      });
+      return params;
+    } catch (e) {
+      return null;
+    }
+  })();
+
+  const params = hashParams || searchParams;
+
   if (params.get('id') && params.get('hash')) {
     const isValid = await validateTelegramAuth(params);
     if (!isValid) {
@@ -129,7 +151,7 @@ export const resolveTelegramUser = async (): Promise<{ user: TelegramUser | null
     const parsed = parseUserFromParams(params);
     if (parsed) {
       persistUser(parsed);
-      const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+      const cleanUrl = window.location.origin + window.location.pathname + window.location.search;
       window.history.replaceState({}, document.title, cleanUrl);
       return { user: parsed };
     }
