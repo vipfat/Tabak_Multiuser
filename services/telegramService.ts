@@ -1,5 +1,7 @@
 // telegramService.ts
-const AUTH_PATH = '/api/auth/telegram/callback';
+import { TelegramUser } from '../types';
+
+const STORAGE_USER_KEY = 'telegram_web_user';
 
 declare global {
   interface Window {
@@ -27,27 +29,34 @@ declare global {
   }
 }
 
-/**
- * Retrieves the current Telegram user.
- * If running in a browser (dev mode), returns a mock user.
- */
-export const getTelegramUser = (): TelegramUser => {
-  if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initDataUnsafe?.user) {
-    window.Telegram.WebApp.ready();
-    window.Telegram.WebApp.expand();
-    return window.Telegram.WebApp.initDataUnsafe.user;
+export const persistTelegramUser = (user: TelegramUser) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
+};
+
+export const getTelegramUser = (): TelegramUser | null => {
+  if (typeof window !== 'undefined') {
+    try {
+      const rawUser = localStorage.getItem(STORAGE_USER_KEY);
+      if (rawUser) {
+        const storedUser = JSON.parse(rawUser) as TelegramUser;
+        if (storedUser?.id) return storedUser;
+      }
+    } catch (e) {
+      console.warn('Failed to restore Telegram user from localStorage', e);
+    }
+
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      return window.Telegram.WebApp.initDataUnsafe.user;
+    }
   }
 
-  // Fallback/Mock user for browser development
-  return {
-    id: 999999,
-    first_name: "Гость",
-    username: "browser_user"
-  };
+  return null;
 };
 
 // Logout
 export function logoutTelegramUser() {
-  localStorage.removeItem("telegram_web_user");
-  localStorage.removeItem('telegram_session_token');
+  localStorage.removeItem(STORAGE_USER_KEY);
 }

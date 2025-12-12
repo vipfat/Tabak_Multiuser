@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, RefreshCcw, MapPin, Building2, X } from 'lucide-react';
+import { Loader2, RefreshCcw, MapPin, Building2, X, ArrowUpRight } from 'lucide-react';
 import { Venue } from '../types';
 
 interface VenueSelectorProps {
@@ -40,6 +40,16 @@ const VenueSelector: React.FC<VenueSelectorProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <a
+              href="https://landing.hookahmix.ru"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-800/60 bg-emerald-500/5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/10 hover:border-emerald-600/80 transition-colors"
+            >
+              <ArrowUpRight size={16} />
+              Подключить своё заведение
+            </a>
+
             <button
               onClick={onRefresh}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm font-semibold border border-slate-700 transition-colors"
