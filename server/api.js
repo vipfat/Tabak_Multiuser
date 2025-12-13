@@ -21,6 +21,9 @@ const pool = new Pool({
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+// Respond to CORS preflight requests so browsers can POST JSON payloads without
+// seeing "405 Method Not Allowed" when the API is behind certain proxies/CDNs.
+app.options('*', cors());
 
 const withClient = async (handler, res) => {
   let client;
