@@ -35,7 +35,7 @@ jobs:
             npm install
 
             echo "==> Build"
-            npm run build
+            npx vite build
 
             echo "==> Replace dist"
             rm -rf /home/tabakapp/apps/tabak_multiuser/dist
