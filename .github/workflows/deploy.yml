@@ -1,18 +1,44 @@
-- name: Deploy over SSH
-  uses: appleboy/ssh-action@v1.0.3
-  with:
-    host: ${{ secrets.SSH_HOST }}
-    username: ${{ secrets.SSH_USER }}
-    key: ${{ secrets.SSH_KEY }}
-    port: 22
-    script_stop: true
-    debug: true
-    script: |
-      whoami
-      pwd
-      cd ~/apps/tabak_multiuser/repo
-      git pull
-      npm install
-      npm run build
-      rm -rf ~/apps/tabak_multiuser/dist
-      mv dist ~/apps/tabak_multiuser/
+name: Deploy Tabak Multiuser
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script_stop: true
+          debug: true
+          script: |
+            set -e
+
+            echo "==> Who am I"
+            whoami
+
+            echo "==> Go to project"
+            cd /home/tabakapp/apps/tabak_multiuser/repo
+
+            echo "==> Update code"
+            git pull origin main
+
+            echo "==> Install deps"
+            npm install
+
+            echo "==> Build"
+            npm run build
+
+            echo "==> Replace dist"
+            rm -rf /home/tabakapp/apps/tabak_multiuser/dist
+            mv dist /home/tabakapp/apps/tabak_multiuser/
+
+            echo "==> Done"
