@@ -21,7 +21,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1iEyMT_otaxkuigZ1ZSRTKg
 
 ## Database configuration
 
-The app now uses a local PostgreSQL instance instead of Supabase. Provide the following environment variables before running:
+The app now uses a local PostgreSQL instance instead of Supabase. Provide the following environment variables before running. The API automatically loads `.env.local` first (then `.env`) when you start it with `npm run api`:
 
 - `DATABASE_URL` – connection string to PostgreSQL, e.g. `postgresql://tabakapp:PASS@localhost:5432/appdb`
 - `VITE_API_BASE_URL` – base URL for API calls from the frontend (defaults to `/api` when both frontend and API are served together)

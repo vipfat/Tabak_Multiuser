@@ -1,7 +1,11 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
 import pg from 'pg';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const { Pool } = pg;
 const PORT = process.env.PORT || 3000;
