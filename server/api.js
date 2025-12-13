@@ -21,17 +21,26 @@ const pool = new Pool({
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+// Respond to CORS preflight requests so browsers can POST JSON payloads without
+// seeing "405 Method Not Allowed" when the API is behind certain proxies/CDNs.
+app.options('*', cors());
 
 const withClient = async (handler, res) => {
-  const client = await pool.connect();
+  let client;
+
   try {
+    client = await pool.connect();
     return await handler(client);
   } catch (error) {
-    console.error('[api] query failed', error);
-    res.status(500).json({ error: error.message || 'Database error' });
+    console.error('[api] database connection/query failed', error);
+
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Database error' });
+    }
+
     return null;
   } finally {
-    client.release();
+    client?.release();
   }
 };
 
