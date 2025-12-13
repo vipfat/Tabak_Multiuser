@@ -36,7 +36,7 @@ export const fetchVenues = async (): Promise<Venue[]> => {
       visible: normalizeBool(v.visible, true),
     }))
     .filter((venue: Venue) => venue.visible && isSubscriptionActive(venue.subscriptionUntil));
-};
+}; 
 
 export const upsertVenue = async (venue: Venue) => {
   await apiFetch('/venues', {
