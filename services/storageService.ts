@@ -1,8 +1,7 @@
 import { SavedMix, MixIngredient, Flavor, FlavorBrand, Venue } from '../types';
 import { AVAILABLE_FLAVORS } from '../constants';
-import { getDatabaseClient, isDatabaseConfigured } from './supabaseClient';
+import { apiFetch } from './apiClient';
 
-const MIXES_TABLE = 'mixes';
 const STORAGE_KEY = 'hookah_alchemist_history_v2';
 const SELECTED_VENUE_KEY = 'hookah_alchemist_selected_venue';
 
@@ -45,23 +44,14 @@ interface FetchResult {
 
 // Fetch flavors and PIN from Supabase
 export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult> => {
-    if (!venueId || !isDatabaseConfigured()) {
-        return { flavors: AVAILABLE_FLAVORS, brands: [] };
-    }
-
-    const client = getDatabaseClient();
-    if (!client) {
+    if (!venueId) {
         return { flavors: AVAILABLE_FLAVORS, brands: [] };
     }
 
     try {
-        const [{ data: flavorsData, error: flavorsError }, { data: brandsData, error: brandsError }] = await Promise.all([
-            client.from('flavors').select('*').eq('venue_id', venueId).order('name', { ascending: true }),
-            client.from('brands').select('name').eq('venue_id', venueId).order('name', { ascending: true })
-        ]);
-
-        if (flavorsError) throw flavorsError;
-        if (brandsError) throw brandsError;
+        const { flavors: flavorsData = [], brands: brandsData = [] } = await apiFetch<{ flavors: any[]; brands: any[] }>(
+            `/flavors?venueId=${encodeURIComponent(venueId)}`
+        );
 
         const flavors: Flavor[] = (flavorsData || []).map((row: any) => ({
             id: String(row.id || generateUuid()),
@@ -93,20 +83,9 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
         return { success: false, message: 'Не выбрано заведение' };
     }
 
-    const client = getDatabaseClient();
-    if (!client) {
-        return { success: false, message: 'База данных не настроена' };
-    }
-
     const validBrands = brands.filter(b => b && b.trim() !== "");
 
     try {
-        // Replace venue flavors and brands with latest snapshot
-        const deleteFlavors = client.from('flavors').delete().eq('venue_id', venueId);
-        const deleteBrands = client.from('brands').delete().eq('venue_id', venueId);
-
-        await Promise.all([deleteFlavors, deleteBrands]);
-
         const normalizedFlavors: Flavor[] = flavors.map(f => ({
             ...f,
             id: f.id && String(f.id).trim() !== '' ? String(f.id).trim() : generateUuid(),
@@ -117,9 +96,11 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
             isAvailable: f.isAvailable !== false
         }));
 
-        if (normalizedFlavors.length > 0) {
-            const { error: flavorsError } = await client.from('flavors').upsert(
-                normalizedFlavors.map(f => ({
+        await apiFetch('/flavors', {
+            method: 'PUT',
+            body: JSON.stringify({
+                venueId,
+                flavors: normalizedFlavors.map(f => ({
                     id: f.id,
                     venue_id: venueId,
                     name: f.name,
@@ -127,18 +108,10 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
                     description: f.description,
                     color: f.color,
                     is_available: f.isAvailable
-                }))
-            );
-
-            if (flavorsError) throw flavorsError;
-        }
-
-        if (validBrands.length > 0) {
-            const { error: brandsError } = await client.from('brands').upsert(
-                validBrands.map(name => ({ name, venue_id: venueId }))
-            );
-            if (brandsError) throw brandsError;
-        }
+                })),
+                brands: validBrands.map(name => ({ name, venue_id: venueId })),
+            }),
+        });
 
         return { success: true, message: 'Данные сохранены в базе', normalizedFlavors };
     } catch (error: any) {
@@ -153,39 +126,25 @@ export const saveGlobalPin = async (pin: string, venueId?: string | null): Promi
         return { success: false, message: 'Не выбрано заведение' };
     }
 
-    const client = getDatabaseClient();
-    if (!client) {
-        return { success: false, message: 'База данных не настроена' };
-    }
-
-    const { error } = await client.from('venues').update({ admin_pin: pin }).eq('id', venueId);
-
-    if (error) {
+    try {
+        await apiFetch('/pin', { method: 'POST', body: JSON.stringify({ venueId, pin }) });
+        return { success: true, message: 'Пин сохранён в базе' };
+    } catch (error: any) {
         console.error('Failed to save pin', error);
-        return { success: false, message: error.message };
+        return { success: false, message: error?.message || 'Не удалось сохранить ПИН' };
     }
-
-    return { success: true, message: 'Пин сохранён в базе' };
 };
 
 export const verifyAdminPin = async (pin: string, venueId?: string | null): Promise<boolean> => {
     if (!venueId || !pin) return false;
-    if (!isDatabaseConfigured()) return pin === '0000';
-
-    const client = getDatabaseClient();
-    if (!client) return false;
 
     try {
-        const { data, error } = await client
-            .from('venues')
-            .select('id')
-            .eq('id', venueId)
-            .eq('admin_pin', pin)
-            .maybeSingle();
+        const { valid } = await apiFetch<{ valid: boolean }>(`/pin/verify`, {
+            method: 'POST',
+            body: JSON.stringify({ venueId, pin }),
+        });
 
-        if (error) throw error;
-
-        return Boolean(data?.id);
+        return Boolean(valid);
     } catch (e) {
         console.error('Failed to verify pin', e);
         return false;
@@ -197,24 +156,14 @@ export const updateAdminPin = async (currentPin: string, newPin: string, venueId
         return { success: false, message: 'Не выбрано заведение' };
     }
 
-    const client = getDatabaseClient();
-    if (!client) {
-        return { success: false, message: 'База данных не настроена' };
-    }
-
     try {
-        const { data, error } = await client
-            .from('venues')
-            .update({ admin_pin: newPin })
-            .eq('id', venueId)
-            .eq('admin_pin', currentPin)
-            .select('id')
-            .maybeSingle();
+        const { success, message } = await apiFetch<{ success: boolean; message?: string }>('/pin/update', {
+            method: 'POST',
+            body: JSON.stringify({ venueId, currentPin, newPin }),
+        });
 
-        if (error) throw error;
-
-        if (!data) {
-            return { success: false, message: 'Текущий ПИН неверный' };
+        if (!success) {
+            return { success: false, message: message || 'Текущий ПИН неверный' };
         }
 
         return { success: true, message: 'ПИН обновлен' };
@@ -246,32 +195,20 @@ export const saveMixToHistory = async (
 ): Promise<SavedMix> => {
   const sanitizedIngredients: MixIngredient[] = ingredients.map(({ isMissing, ...rest }) => ({ ...rest }));
 
-  if (isDatabaseConfigured()) {
-    const client = getDatabaseClient();
-    if (client) {
-      try {
-        const payload = {
-          id: generateUuid(),
-          user_id: userId,
-          name: name || 'Мой микс',
-          ingredients: sanitizedIngredients,
-          is_favorite: false,
-          venue_snapshot: venue ?? null,
-          created_at: new Date().toISOString(),
-        };
+  try {
+    const data = await apiFetch<any>('/mixes', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        name: name || 'Мой микс',
+        ingredients: sanitizedIngredients,
+        venue_snapshot: venue ?? null,
+      }),
+    });
 
-        const { data, error } = await client
-          .from(MIXES_TABLE)
-          .upsert(payload)
-          .select()
-          .maybeSingle();
-
-        if (error) throw error;
-        if (data) return mapDbMixToSavedMix(data);
-      } catch (e) {
-        console.error('Failed to persist mix in database', e);
-      }
-    }
+    if (data) return mapDbMixToSavedMix(data);
+  } catch (e) {
+    console.error('Failed to persist mix in database', e);
   }
 
   try {
@@ -306,22 +243,11 @@ export const saveMixToHistory = async (
 };
 
 export const getHistory = async (userId: number): Promise<SavedMix[]> => {
-  if (isDatabaseConfigured()) {
-    const client = getDatabaseClient();
-    if (client) {
-      try {
-        const { data, error } = await client
-          .from(MIXES_TABLE)
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        if (data) return data.map(mapDbMixToSavedMix);
-      } catch (e) {
-        console.error('Failed to load mixes from database', e);
-      }
-    }
+  try {
+    const data = await apiFetch<any[]>(`/mixes?userId=${encodeURIComponent(userId)}`);
+    if (data) return data.map(mapDbMixToSavedMix);
+  } catch (e) {
+    console.error('Failed to load mixes from database', e);
   }
 
   try {
@@ -339,20 +265,14 @@ export const toggleFavoriteMix = async (
   nextValue: boolean,
   userId?: number,
 ): Promise<SavedMix[]> => {
-  if (isDatabaseConfigured()) {
-    const client = getDatabaseClient();
-    if (client && userId) {
-      try {
-        const { error } = await client
-          .from(MIXES_TABLE)
-          .update({ is_favorite: nextValue })
-          .eq('id', mixId)
-          .eq('user_id', userId);
-
-        if (error) throw error;
-      } catch (e) {
-        console.error('Failed to toggle favorite in database', e);
-      }
+  if (userId) {
+    try {
+      await apiFetch(`/mixes/${encodeURIComponent(mixId)}/favorite`, {
+        method: 'POST',
+        body: JSON.stringify({ value: nextValue, userId }),
+      });
+    } catch (e) {
+      console.error('Failed to toggle favorite in database', e);
     }
   }
 
@@ -369,20 +289,14 @@ export const toggleFavoriteMix = async (
 };
 
 export const deleteMix = async (mixId: string, userId?: number): Promise<SavedMix[]> => {
-  if (isDatabaseConfigured()) {
-    const client = getDatabaseClient();
-    if (client && userId) {
-      try {
-        const { error } = await client
-          .from(MIXES_TABLE)
-          .delete()
-          .eq('id', mixId)
-          .eq('user_id', userId);
-
-        if (error) throw error;
-      } catch (e) {
-        console.error('Failed to delete mix in database', e);
-      }
+  if (userId) {
+    try {
+      await apiFetch(`/mixes/${encodeURIComponent(mixId)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ userId }),
+      });
+    } catch (e) {
+      console.error('Failed to delete mix in database', e);
     }
   }
 

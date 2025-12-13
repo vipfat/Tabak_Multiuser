@@ -1,5 +1,5 @@
 import { Venue } from '../types';
-import { getDatabaseClient, isDatabaseConfigured } from './supabaseClient';
+import { apiFetch } from './apiClient';
 
 const normalizeBool = (value: any, defaultValue = true) => {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -22,22 +22,10 @@ const isSubscriptionActive = (dateString: string) => {
 };
 
 export const fetchVenues = async (): Promise<Venue[]> => {
-  if (!isDatabaseConfigured()) throw new Error('База данных не настроена');
+  const data = await apiFetch<any[]>('/venues');
+  const rows = Array.isArray(data) ? data : (data as any)?.venues ?? [];
 
-  const client = getDatabaseClient();
-  if (!client) throw new Error('База данных не настроена');
-
-  const { data, error } = await client
-    .from('venues')
-    .select('id,title,city,logo,subscription_until,visible,flavor_schema')
-    .order('title', { ascending: true });
-
-  if (error) {
-    console.error('Failed to fetch venues', error);
-    throw new Error('Не удалось получить список заведений');
-  }
-
-  return (data || [])
+  return rows
     .map((v: any) => ({
       id: String(v.id),
       title: String(v.title || 'Без названия').trim(),
@@ -51,26 +39,20 @@ export const fetchVenues = async (): Promise<Venue[]> => {
 };
 
 export const upsertVenue = async (venue: Venue) => {
-  const client = getDatabaseClient();
-  if (!client) throw new Error('База данных не настроена');
-
-  const { error } = await client.from('venues').upsert({
-    id: venue.id,
-    title: venue.title,
-    city: venue.city,
-    logo: venue.logo,
-    subscription_until: venue.subscriptionUntil,
-    visible: venue.visible,
-    flavor_schema: venue.scriptUrl,
+  await apiFetch('/venues', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: venue.id,
+      title: venue.title,
+      city: venue.city,
+      logo: venue.logo,
+      subscription_until: venue.subscriptionUntil,
+      visible: venue.visible,
+      flavor_schema: venue.scriptUrl,
+    }),
   });
-
-  if (error) throw error;
 };
 
 export const deleteVenue = async (venueId: string) => {
-  const client = getDatabaseClient();
-  if (!client) throw new Error('База данных не настроена');
-
-  const { error } = await client.from('venues').delete().eq('id', venueId);
-  if (error) throw error;
+  await apiFetch(`/venues/${encodeURIComponent(venueId)}`, { method: 'DELETE' });
 };
