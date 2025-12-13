@@ -23,15 +23,21 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 const withClient = async (handler, res) => {
-  const client = await pool.connect();
+  let client;
+
   try {
+    client = await pool.connect();
     return await handler(client);
   } catch (error) {
-    console.error('[api] query failed', error);
-    res.status(500).json({ error: error.message || 'Database error' });
+    console.error('[api] database connection/query failed', error);
+
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Database error' });
+    }
+
     return null;
   } finally {
-    client.release();
+    client?.release();
   }
 };
 
