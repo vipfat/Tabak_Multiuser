@@ -23,8 +23,9 @@ const isSubscriptionActive = (dateString: string) => {
 
 export const fetchVenues = async (): Promise<Venue[]> => {
   const data = await apiFetch<any[]>('/venues');
+  const rows = Array.isArray(data) ? data : (data as any)?.venues ?? [];
 
-  return (data || [])
+  return rows
     .map((v: any) => ({
       id: String(v.id),
       title: String(v.title || 'Без названия').trim(),

@@ -1,6 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '/api';
 
 interface RequestOptions extends RequestInit {
+  /**
+   * Whether to parse the response body (JSON/text) before returning.
+   * Defaults to true.
+   */
   parse?: boolean;
 }
 
@@ -12,7 +16,8 @@ export const apiFetch = async <T = any>(path: string, options: RequestOptions = 
   };
 
   const response = await fetch(url, { ...options, headers });
-  if (!options.parse) {
+  const shouldParse = options.parse ?? true;
+  if (!shouldParse) {
     // @ts-expect-error allow caller to handle
     return response as any;
   }
