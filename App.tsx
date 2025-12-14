@@ -8,10 +8,11 @@ import {
   saveMixToHistory,
   fetchFlavors,
   saveSelectedVenue,
+  getSavedVenueId,
   verifyAdminPin,
   updateAdminPin
 } from './services/storageService';
-import { fetchVenues } from './services/venueService';
+import { fetchVenues, upsertVenue } from './services/venueService';
 import { syncTelegramClient } from './services/clientService';
 import BowlChart from './components/BowlChart';
 import FlavorSelector from './components/FlavorSelector';
@@ -70,12 +71,29 @@ const App: React.FC = () => {
     try {
       const list = await fetchVenues();
       setVenues(list);
+      
+      // Check if URL contains venue slug (e.g., /app/yenhookah)
+      const pathname = window.location.pathname;
+      const pathParts = pathname.split('/');
+      const venueSlug = pathParts[pathParts.length - 1];
+      
+      if (venueSlug && venueSlug !== 'app' && !selectedVenue) {
+        // Try to find venue by slug
+        const venueBySlug = list.find(v => v.slug === venueSlug);
+        if (venueBySlug) {
+          setSelectedVenue(venueBySlug);
+          saveSelectedVenue(venueBySlug);
+          return;
+        }
+      }
+      
+      // Don't auto-restore from localStorage - always show venue selector on refresh
     } catch (e: any) {
       setVenuesError(e?.message || 'Неизвестная ошибка');
     } finally {
       setIsVenuesLoading(false);
     }
-  }, []);
+  }, [selectedVenue]);
 
   const handleAuthSuccess = (telegramUser: TelegramUser) => {
     setUser(telegramUser);
@@ -310,6 +328,12 @@ const App: React.FC = () => {
     setSelectedVenue(venue);
     saveSelectedVenue(venue);
 
+    // Update URL with venue slug if available
+    if (venue.slug) {
+      const newPath = `/app/${venue.slug}`;
+      window.history.pushState({}, '', newPath);
+    }
+
     setIsVenueSelectorOpen(false);
     setMix([]);
       setMixName('');
@@ -322,6 +346,35 @@ const App: React.FC = () => {
       setVerifiedPin('');
   };
 
+  const handleUpdateVenueSettings = async (settings: { bowl_capacity: number; allow_brand_mixing: boolean }) => {
+    if (!selectedVenue) return;
+    
+    const updatedVenue = {
+      ...selectedVenue,
+      bowl_capacity: settings.bowl_capacity,
+      allow_brand_mixing: settings.allow_brand_mixing,
+    };
+    
+    try {
+      // Save to database
+      await upsertVenue(updatedVenue);
+      
+      // Reload venues from database to get fresh data
+      const freshVenues = await fetchVenues();
+      setVenues(freshVenues);
+      
+      // Find the updated venue in fresh data
+      const freshVenue = freshVenues.find(v => v.id === selectedVenue.id);
+      if (freshVenue) {
+        setSelectedVenue(freshVenue);
+        saveSelectedVenue(freshVenue);
+      }
+    } catch (error) {
+      console.error('Failed to update venue settings:', error);
+      throw error; // Re-throw to let AdminPanel show error
+    }
+  };
+
   const toggleFlavor = (flavor: Flavor) => {
     const exists = mix.find(m => m.id === flavor.id);
 
@@ -329,7 +382,8 @@ const App: React.FC = () => {
       setMix(mix.filter(m => m.id !== flavor.id));
     } else {
       const currentTotal = mix.reduce((acc, m) => acc + m.grams, 0);
-      const remaining = MAX_BOWL_SIZE - currentTotal;
+      const bowlCapacity = selectedVenue?.bowl_capacity ?? MAX_BOWL_SIZE;
+      const remaining = bowlCapacity - currentTotal;
       const initialGrams = remaining >= 1 ? 1 : 0;
       const newIngredient: MixIngredient = { ...flavor, grams: initialGrams };
       setMix([...mix, newIngredient]);
@@ -342,7 +396,8 @@ const App: React.FC = () => {
 
   const updateGrams = (id: string, grams: number) => {
     const otherWeight = mix.filter(m => m.id !== id).reduce((acc, c) => acc + c.grams, 0);
-    const maxAllowed = MAX_BOWL_SIZE - otherWeight;
+    const bowlCapacity = selectedVenue?.bowl_capacity ?? MAX_BOWL_SIZE;
+    const maxAllowed = bowlCapacity - otherWeight;
     const finalGrams = Math.min(grams, maxAllowed);
 
     setMix(mix.map(item => 
@@ -523,7 +578,7 @@ const App: React.FC = () => {
         {/* Bowl Visualization */}
         <section className="mb-8 relative">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none"></div>
-            <BowlChart mix={mix} totalWeight={totalWeight} />
+            <BowlChart mix={mix} totalWeight={totalWeight} bowlCapacity={selectedVenue?.bowl_capacity} />
         </section>
 
         {/* Action Area */}
@@ -531,7 +586,7 @@ const App: React.FC = () => {
             <div>
                 <h2 className="text-lg font-semibold text-white">Ингредиенты</h2>
                 <p className="text-xs text-slate-400">
-                {totalWeight === MAX_BOWL_SIZE ? 'Чаша полна' : `осталось ${MAX_BOWL_SIZE - totalWeight}г`}
+                {totalWeight === (selectedVenue?.bowl_capacity ?? MAX_BOWL_SIZE) ? 'Чаша полна' : `осталось ${(selectedVenue?.bowl_capacity ?? MAX_BOWL_SIZE) - totalWeight}г`}
                 </p>
             </div>
             <button
@@ -557,6 +612,7 @@ const App: React.FC = () => {
                 onUpdateGrams={updateGrams}
                 onRemove={removeFlavor}
                 totalWeight={totalWeight}
+                bowlCapacity={selectedVenue?.bowl_capacity}
             />
         </section>
         
@@ -608,6 +664,8 @@ const App: React.FC = () => {
         onToggle={toggleFlavor}
         currentFlavorIds={mix.map(m => m.id)}
         availableFlavors={availableFlavors}
+        allowBrandMixing={selectedVenue?.allow_brand_mixing ?? true}
+        currentMix={mix}
       />
 
       {/* History Side Panel */}
@@ -647,6 +705,8 @@ const App: React.FC = () => {
         customBrands={customBrands}
         setCustomBrands={setCustomBrands}
         activeVenueId={selectedVenue?.id}
+        selectedVenue={selectedVenue}
+        onUpdateVenue={handleUpdateVenueSettings}
       />
 
       {/* Secret PIN Modal */}

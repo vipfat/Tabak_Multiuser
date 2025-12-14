@@ -6,6 +6,7 @@ import { MAX_BOWL_SIZE } from '../constants';
 interface BowlChartProps {
   mix: MixIngredient[];
   totalWeight: number;
+  bowlCapacity?: number;
 }
 
 // Helper to determine best text color (black or white) based on background hex
@@ -26,7 +27,7 @@ const getContrastYIQ = (hexcolor: string) => {
     return (yiq >= 128) ? '#000000' : '#ffffff';
 };
 
-const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight }) => {
+const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight, bowlCapacity = MAX_BOWL_SIZE }) => {
   // Prepare data: Add an "Empty" slice if bowl isn't full
   const remaining = MAX_BOWL_SIZE - totalWeight;
   
@@ -101,7 +102,7 @@ const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight }) => {
       
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <span className="text-3xl font-bold text-white drop-shadow-md">{totalWeight}г</span>
-        <span className="text-xs text-slate-400 uppercase tracking-wider">из {MAX_BOWL_SIZE}г</span>
+        <span className="text-xs text-slate-400 uppercase tracking-wider">из {bowlCapacity}г</span>
       </div>
     </div>
   );

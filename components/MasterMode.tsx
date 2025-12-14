@@ -41,7 +41,7 @@ const MasterMode: React.FC<MasterModeProps> = ({ isOpen, onClose, mix, totalWeig
       <div className="flex-1 flex flex-col items-center p-4 overflow-y-auto">
         
         <div className="w-full max-w-xs mb-8">
-           <BowlChart mix={mix} totalWeight={totalWeight} />
+           <BowlChart mix={mix} totalWeight={totalWeight} bowlCapacity={venue?.bowl_capacity} />
         </div>
 
         <div className="w-full max-w-md space-y-4">

@@ -54,4 +54,7 @@ export interface Venue {
   scriptUrl: string;
   subscriptionUntil: string;
   visible: boolean;
+  slug?: string;
+  bowl_capacity?: number;
+  allow_brand_mixing?: boolean;
 }

@@ -10,18 +10,34 @@ interface FlavorSelectorProps {
   onToggle: (flavor: Flavor) => void;
   currentFlavorIds: string[];
   availableFlavors: Flavor[];
+  allowBrandMixing?: boolean;
+  currentMix?: Flavor[];
 }
 
-const FlavorSelector: React.FC<FlavorSelectorProps> = ({ isOpen, onClose, onToggle, currentFlavorIds, availableFlavors }) => {
+const FlavorSelector: React.FC<FlavorSelectorProps> = ({ isOpen, onClose, onToggle, currentFlavorIds, availableFlavors, allowBrandMixing = true, currentMix = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBrand, setSelectedBrand] = useState<string>('Все');
 
+  // Determine allowed brand if brand mixing is disabled
+  const allowedBrand = useMemo(() => {
+    if (allowBrandMixing || currentMix.length === 0) return null;
+    // Get the brand of the first ingredient
+    return currentMix[0]?.brand || null;
+  }, [allowBrandMixing, currentMix]);
+
   // Dynamically extract unique brands from the available flavors list
   // This ensures custom brands added via "Other" appear in the filter tabs automatically.
+  // Filter brands if brand mixing is disabled
   const brands = useMemo(() => {
-    const uniqueBrands = Array.from(new Set(availableFlavors.map(f => f.brand))).sort();
+    let uniqueBrands = Array.from(new Set(availableFlavors.map(f => f.brand))).sort();
+    
+    // If brand mixing disabled and there's an allowed brand, only show that brand
+    if (allowedBrand) {
+      uniqueBrands = uniqueBrands.filter(b => b === allowedBrand);
+    }
+    
     return ['Все', ...uniqueBrands];
-  }, [availableFlavors]);
+  }, [availableFlavors, allowedBrand]);
 
   if (!isOpen) return null;
 
@@ -36,7 +52,11 @@ const FlavorSelector: React.FC<FlavorSelectorProps> = ({ isOpen, onClose, onTogg
         desc.toLowerCase().includes(search);
     
     const matchesBrand = selectedBrand === 'Все' || flavor.brand === selectedBrand;
-    return matchesSearch && matchesBrand;
+    
+    // If brand mixing is disabled, only show flavors of the allowed brand
+    const matchesAllowedBrand = !allowedBrand || flavor.brand === allowedBrand;
+    
+    return matchesSearch && matchesBrand && matchesAllowedBrand;
   });
 
   return (

@@ -22,16 +22,15 @@ export const generateUuid = (): string => {
 
 export const saveSelectedVenue = (venue: Venue) => {
     try {
-        localStorage.setItem(SELECTED_VENUE_KEY, JSON.stringify(venue));
+        localStorage.setItem(SELECTED_VENUE_KEY, venue.id);
     } catch (e) {
-        console.error('Failed to persist venue', e);
+        console.error('Failed to persist venue ID', e);
     }
 };
 
-export const getSavedVenue = (): Venue | null => {
+export const getSavedVenueId = (): string | null => {
     try {
-        const raw = localStorage.getItem(SELECTED_VENUE_KEY);
-        return raw ? (JSON.parse(raw) as Venue) : null;
+        return localStorage.getItem(SELECTED_VENUE_KEY);
     } catch (e) {
         return null;
     }

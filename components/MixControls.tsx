@@ -9,9 +9,10 @@ interface MixControlsProps {
   onUpdateGrams: (id: string, grams: number) => void;
   onRemove: (id: string) => void;
   totalWeight: number;
+  bowlCapacity?: number;
 }
 
-const MixControls: React.FC<MixControlsProps> = ({ mix, onUpdateGrams, onRemove, totalWeight }) => {
+const MixControls: React.FC<MixControlsProps> = ({ mix, onUpdateGrams, onRemove, totalWeight, bowlCapacity = MAX_BOWL_SIZE }) => {
   
   if (mix.length === 0) {
     return (
@@ -24,9 +25,9 @@ const MixControls: React.FC<MixControlsProps> = ({ mix, onUpdateGrams, onRemove,
   return (
     <div className="space-y-4">
       {mix.map((ingredient) => {
-        // The scale of the slider is always 0 to MAX_BOWL_SIZE (18).
+        // The scale of the slider is always 0 to bowlCapacity.
         // However, the user can only drag up to (Current + Remaining).
-        const remainingGlobal = MAX_BOWL_SIZE - totalWeight;
+        const remainingGlobal = bowlCapacity - totalWeight;
         const maxAllowed = ingredient.grams + remainingGlobal;
         const isMissing = ingredient.isMissing;
 
@@ -40,7 +41,7 @@ const MixControls: React.FC<MixControlsProps> = ({ mix, onUpdateGrams, onRemove,
             {/* Background fill for the card to visualize proportion roughly */}
             <div
                 className="absolute bottom-0 left-0 top-0 bg-slate-700/20 -z-10 transition-all duration-300"
-                style={{ width: `${(ingredient.grams / MAX_BOWL_SIZE) * 100}%` }}
+                style={{ width: `${(ingredient.grams / bowlCapacity) * 100}%` }}
             />
 
             <div className="flex justify-between items-start mb-3">
@@ -71,7 +72,7 @@ const MixControls: React.FC<MixControlsProps> = ({ mix, onUpdateGrams, onRemove,
                          {/* Allowed Region: Visualizes how far this slider can theoretically go given the other ingredients */}
                          <div
                             className={`h-full transition-all duration-200 ${isMissing ? 'bg-red-700/40' : 'bg-slate-700/50'}`}
-                            style={{ width: `${(maxAllowed / MAX_BOWL_SIZE) * 100}%` }}
+                            style={{ width: `${(maxAllowed / bowlCapacity) * 100}%` }}
                          />
                     </div>
 
@@ -79,7 +80,7 @@ const MixControls: React.FC<MixControlsProps> = ({ mix, onUpdateGrams, onRemove,
                     <input
                         type="range"
                         min="1"
-                        max={MAX_BOWL_SIZE} // Scale is fixed to 18
+                        max={bowlCapacity}
                         step="1"
                         value={ingredient.grams}
                         onChange={(e) => {

@@ -47,21 +47,28 @@ const withClient = async (handler, res) => {
 app.get('/api/venues', async (_req, res) => {
   await withClient(async (client) => {
     const result = await client.query(
-      'select id, title, city, logo, subscription_until, visible, flavor_schema from venues order by title asc',
+      'select id, title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by title asc',
     );
     res.json(result.rows);
   }, res);
 });
 
 app.post('/api/venues', async (req, res) => {
-  const { id, title, city, logo, subscription_until, visible, flavor_schema } = req.body || {};
+  const { id, title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing } = req.body || {};
   await withClient(async (client) => {
+    // Convert empty strings to null for database fields that expect null or valid values
+    const subscriptionUntilValue = subscription_until === '' ? null : subscription_until;
+    const logoValue = logo === '' ? null : logo;
+    const flavorSchemaValue = flavor_schema === '' ? null : flavor_schema;
+    const slugValue = slug === '' ? null : slug;
+    
     await client.query(
-      `insert into venues (id, title, city, logo, subscription_until, visible, flavor_schema)
-       values ($1, $2, $3, $4, $5, $6, $7)
+      `insert into venues (id, title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        on conflict (id) do update set title = excluded.title, city = excluded.city, logo = excluded.logo,
-         subscription_until = excluded.subscription_until, visible = excluded.visible, flavor_schema = excluded.flavor_schema`,
-      [id, title, city, logo, subscription_until, visible, flavor_schema],
+         subscription_until = excluded.subscription_until, visible = excluded.visible, flavor_schema = excluded.flavor_schema,
+         slug = excluded.slug, bowl_capacity = excluded.bowl_capacity, allow_brand_mixing = excluded.allow_brand_mixing`,
+      [id, title, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
     );
     res.json({ success: true });
   }, res);
@@ -228,7 +235,7 @@ app.delete('/api/mixes/:id', async (req, res) => {
   if (!mixId) return res.status(400).json({ error: 'mixId is required' });
 
   await withClient(async (client) => {
-    await client.query('delete from mixes where id = $1 and ($2::int is null or user_id = $2)', [mixId, userId ?? null]);
+    await client.query('delete from mixes where id = $1 and ($2::bigint is null or user_id = $2)', [mixId, userId ?? null]);
     res.json({ success: true });
   }, res);
 });

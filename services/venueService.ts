@@ -34,6 +34,9 @@ export const fetchVenues = async (): Promise<Venue[]> => {
       scriptUrl: String(v.flavor_schema || '').trim(),
       subscriptionUntil: String(v.subscription_until || '').trim(),
       visible: normalizeBool(v.visible, true),
+      slug: String(v.slug || '').trim(),
+      bowl_capacity: typeof v.bowl_capacity === 'number' ? v.bowl_capacity : 18,
+      allow_brand_mixing: normalizeBool(v.allow_brand_mixing, true),
     }))
     .filter((venue: Venue) => venue.visible && isSubscriptionActive(venue.subscriptionUntil));
 }; 
@@ -49,6 +52,9 @@ export const upsertVenue = async (venue: Venue) => {
       subscription_until: venue.subscriptionUntil,
       visible: venue.visible,
       flavor_schema: venue.scriptUrl,
+      slug: venue.slug || '',
+      bowl_capacity: venue.bowl_capacity ?? 18,
+      allow_brand_mixing: venue.allow_brand_mixing ?? true,
     }),
   });
 };

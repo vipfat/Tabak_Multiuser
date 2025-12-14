@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Flavor, FlavorBrand } from '../types';
-import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle } from 'lucide-react';
+import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle, MapPin } from 'lucide-react';
 import { saveFlavorsAndBrands, fetchFlavors, generateUuid } from '../services/storageService';
 
 interface AdminPanelProps {
@@ -15,6 +15,8 @@ interface AdminPanelProps {
   customBrands?: string[];
   setCustomBrands?: (brands: string[]) => void;
   activeVenueId?: string;
+  selectedVenue?: any;
+  onUpdateVenue?: (settings: { bowl_capacity: number; allow_brand_mixing: boolean }) => void;
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -28,6 +30,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     customBrands = [],
     setCustomBrands,
     activeVenueId,
+    selectedVenue,
+    onUpdateVenue,
 }) => {
   const [activeTab, setActiveTab] = useState<'stock' | 'add' | 'brands' | 'settings'>('stock');
   const [syncStatus, setSyncStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error', msg: string }>({ type: 'idle', msg: '' });
@@ -44,11 +48,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   // Brand Management State
   const [newBrandInput, setNewBrandInput] = useState('');
 
+  // Venue Settings State
+  const [bowlCapacity, setBowlCapacity] = useState<number>(18);
+  const [allowBrandMixing, setAllowBrandMixing] = useState<boolean>(true);
+
   useEffect(() => {
     if (isOpen) {
         setSyncStatus({ type: 'idle', msg: '' });
+        // Load venue settings
+        if (selectedVenue) {
+          setBowlCapacity(selectedVenue.bowl_capacity ?? 18);
+          setAllowBrandMixing(selectedVenue.allow_brand_mixing ?? true);
+        }
     }
-  }, [isOpen]);
+  }, [isOpen, selectedVenue]);
 
   // 1. Brands for FILTERING (Only those that actually have flavors in the list)
   // This ensures no "empty" brands appear in the Stock filter dropdown.
@@ -500,6 +513,114 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* SETTINGS TAB */}
           {activeTab === 'settings' && (
               <div className="space-y-4 py-2">
+                  {selectedVenue && (
+                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <Settings size={16} className="text-emerald-400" />
+                          Настройки заведения
+                      </h3>
+                      
+                      {/* Bowl Capacity */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                          Максимальная вместимость чаши (грамм)
+                        </label>
+                        <input
+                          type="number"
+                          min="10"
+                          max="50"
+                          value={bowlCapacity}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setBowlCapacity(18);
+                            } else {
+                              const num = parseInt(val);
+                              if (!isNaN(num)) {
+                                setBowlCapacity(num);
+                              }
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-emerald-500"
+                        />
+                        <p className="text-xs text-slate-400">
+                          Максимальное количество табака, которое может поместиться в чашу
+                        </p>
+                      </div>
+                      {/* Direct Link Info */}
+                      {selectedVenue?.slug && (
+                        <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3 space-y-1">
+                          <p className="text-xs font-semibold text-emerald-400 flex items-center gap-2">
+                            <MapPin size={12} />
+                            Прямая ссылка на заведение
+                          </p>
+                          <a 
+                            href={`https://hookahmix.ru/app/${selectedVenue.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-emerald-300 hover:text-emerald-200 font-mono break-all underline"
+                          >
+                            hookahmix.ru/app/{selectedVenue.slug}
+                          </a>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Используйте эту ссылку для QR-кодов - она сразу откроет ваше заведение
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Allow Brand Mixing */}
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-3 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={allowBrandMixing}
+                            onChange={(e) => setAllowBrandMixing(e.target.checked)}
+                            className="w-5 h-5 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer"
+                          />
+                          <span className="text-sm font-semibold text-slate-300 group-hover:text-white transition-colors">
+                            Разрешить смешивание брендов
+                          </span>
+                        </label>
+                        <p className="text-xs text-slate-400 ml-8">
+                          Когда отключено, клиенты могут выбирать вкусы только одного бренда
+                        </p>
+                      </div>
+
+                      {/* Save Button */}
+                      <button
+                        onClick={async () => {
+                          if (onUpdateVenue) {
+                            try {
+                              setSyncStatus({ type: 'loading', msg: 'Сохранение...' });
+                              await onUpdateVenue({ bowl_capacity: bowlCapacity, allow_brand_mixing: allowBrandMixing });
+                              setSyncStatus({ type: 'success', msg: 'Настройки сохранены' });
+                              setTimeout(() => setSyncStatus({ type: 'idle', msg: '' }), 2000);
+                            } catch (error) {
+                              setSyncStatus({ type: 'error', msg: 'Ошибка сохранения' });
+                              setTimeout(() => setSyncStatus({ type: 'idle', msg: '' }), 3000);
+                            }
+                          }
+                        }}
+                        disabled={syncStatus.type === 'loading'}
+                        className="w-full py-2 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Save size={16} />
+                        {syncStatus.type === 'loading' ? 'Сохранение...' : 'Сохранить настройки'}
+                      </button>
+                      
+                      {/* Status Message */}
+                      {syncStatus.type !== 'idle' && (
+                        <div className={`text-xs text-center py-2 rounded-lg ${
+                          syncStatus.type === 'success' ? 'text-emerald-400 bg-emerald-950/30' : 
+                          syncStatus.type === 'error' ? 'text-red-400 bg-red-950/30' : 
+                          'text-slate-400'
+                        }`}>
+                          {syncStatus.msg}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
                       <h3 className="text-sm font-bold text-white flex items-center gap-2">
                           <Cloud size={16} className="text-indigo-400" />
