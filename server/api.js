@@ -55,9 +55,14 @@ const withClient = async (handler, res) => {
 
 app.get('/api/venues', async (_req, res) => {
   await withClient(async (client) => {
-    const result = await client.query(
-      'select id, COALESCE(title, name) as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by COALESCE(title, name) asc',
+    const colCheck = await client.query(
+      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='title') AS has_title"
     );
+    const hasTitle = colCheck.rows[0]?.has_title === true || colCheck.rows[0]?.has_title === 't';
+    const sql = hasTitle
+      ? 'select id, title as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by title asc'
+      : 'select id, name as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by name asc';
+    const result = await client.query(sql);
     res.json(result.rows);
   }, res);
 });

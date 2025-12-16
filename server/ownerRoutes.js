@@ -100,16 +100,12 @@ export function createOwnerRouter(pool) {
     try {
       client = await pool.connect();
 
-      const result = await client.query(
-          `SELECT id,
-                  COALESCE(title, name) AS title,
-                  city, address, logo, slug, bowl_capacity, 
-                  allow_brand_mixing, subscription_until, visible, created_at, updated_at
-           FROM venues
-           WHERE owner_id = $1
-           ORDER BY COALESCE(title, name) ASC`,
-        [req.owner.id]
-      );
+const check = await client.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='title') AS has_title");
+      const hasTitle = check.rows[0]?.has_title === true || check.rows[0]?.has_title === 't';
+      const sql = hasTitle
+        ? `SELECT id, title AS title, city, address, logo, slug, bowl_capacity, allow_brand_mixing, subscription_until, visible, created_at, updated_at FROM venues WHERE owner_id = $1 ORDER BY title ASC`
+        : `SELECT id, name AS title, city, address, logo, slug, bowl_capacity, allow_brand_mixing, subscription_until, visible, created_at, updated_at FROM venues WHERE owner_id = $1 ORDER BY name ASC`;
+      const result = await client.query(sql, [req.owner.id]);
 
       res.json(result.rows);
 
