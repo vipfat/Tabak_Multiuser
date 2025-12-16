@@ -72,8 +72,8 @@ const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight, bowlCapacity = 
   };
 
   return (
-    <div className="w-full h-64 relative flex items-center justify-center">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full h-64 relative flex items-center justify-center" style={{ minWidth: 0 }}>
+      <ResponsiveContainer width="100%" height="100%" minHeight={150}>
         <PieChart>
           <Pie
             data={data}
