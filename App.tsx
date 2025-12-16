@@ -137,6 +137,17 @@ const App: React.FC = () => {
     loadVenues();
   }, [loadVenues]);
 
+  // Yandex Metrika: track venue selection
+  useEffect(() => {
+    if (selectedVenue && typeof window !== 'undefined' && (window as any).ym) {
+      const url = selectedVenue.slug ? `/app/${selectedVenue.slug}` : '/app/';
+      (window as any).ym(105870598, 'hit', url, {
+        title: `${selectedVenue.title} - ${selectedVenue.city}`,
+        referer: document.referrer
+      });
+    }
+  }, [selectedVenue]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
