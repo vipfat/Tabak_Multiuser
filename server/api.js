@@ -55,14 +55,9 @@ const withClient = async (handler, res) => {
 
 app.get('/api/venues', async (_req, res) => {
   await withClient(async (client) => {
-    const colCheck = await client.query(
-      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='venues' AND column_name='title') AS has_title"
+    const result = await client.query(
+      'select id, name as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by name asc'
     );
-    const hasTitle = colCheck.rows[0]?.has_title === true || colCheck.rows[0]?.has_title === 't';
-    const sql = hasTitle
-      ? 'select id, title as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by title asc'
-      : 'select id, name as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by name asc';
-    const result = await client.query(sql);
     res.json(result.rows);
   }, res);
 });
@@ -75,17 +70,15 @@ app.post('/api/venues', async (req, res) => {
     const logoValue = logo === '' ? null : logo;
     const flavorSchemaValue = flavor_schema === '' ? null : flavor_schema;
     const slugValue = slug === '' ? null : slug;
-
-    const titleValue = title ?? name ?? null;
-    const nameValue = name ?? title ?? null;
+    const nameValue = name || title || null;
     
     await client.query(
-      `insert into venues (id, title, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       on conflict (id) do update set title = COALESCE(excluded.title, venues.title), name = COALESCE(excluded.name, venues.name), city = excluded.city, logo = excluded.logo,
+      `insert into venues (id, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       on conflict (id) do update set name = excluded.name, city = excluded.city, logo = excluded.logo,
          subscription_until = excluded.subscription_until, visible = excluded.visible, flavor_schema = excluded.flavor_schema,
          slug = excluded.slug, bowl_capacity = excluded.bowl_capacity, allow_brand_mixing = excluded.allow_brand_mixing`,
-      [id, titleValue, nameValue, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
+      [id, nameValue, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
     );
     res.json({ success: true });
   }, res);
