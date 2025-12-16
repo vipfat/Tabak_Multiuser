@@ -34,6 +34,11 @@ app.set('trust proxy', true);
 app.use('/api/auth', createAuthRouter(pool));
 app.use('/api/owner', createOwnerRouter(pool));
 
+// Test endpoint
+app.get('/api/test', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '1.0' });
+});
+
 const withClient = async (handler, res) => {
   let client;
 
@@ -56,7 +61,7 @@ const withClient = async (handler, res) => {
 app.get('/api/venues', async (_req, res) => {
   await withClient(async (client) => {
     const result = await client.query(
-      'select id, name as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by name asc'
+      'select id, name as title, city from venues order by name asc'
     );
     res.json(result.rows);
   }, res);
