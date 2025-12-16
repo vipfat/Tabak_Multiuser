@@ -56,28 +56,31 @@ const withClient = async (handler, res) => {
 app.get('/api/venues', async (_req, res) => {
   await withClient(async (client) => {
     const result = await client.query(
-      'select id, title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by title asc',
+      'select id, COALESCE(title, name) as title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing from venues order by COALESCE(title, name) asc',
     );
     res.json(result.rows);
   }, res);
 });
 
 app.post('/api/venues', async (req, res) => {
-  const { id, title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing } = req.body || {};
+  const { id, title, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing } = req.body || {};
   await withClient(async (client) => {
     // Convert empty strings to null for database fields that expect null or valid values
     const subscriptionUntilValue = subscription_until === '' ? null : subscription_until;
     const logoValue = logo === '' ? null : logo;
     const flavorSchemaValue = flavor_schema === '' ? null : flavor_schema;
     const slugValue = slug === '' ? null : slug;
+
+    const titleValue = title ?? name ?? null;
+    const nameValue = name ?? title ?? null;
     
     await client.query(
-      `insert into venues (id, title, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       on conflict (id) do update set title = excluded.title, city = excluded.city, logo = excluded.logo,
+      `insert into venues (id, title, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       on conflict (id) do update set title = COALESCE(excluded.title, venues.title), name = COALESCE(excluded.name, venues.name), city = excluded.city, logo = excluded.logo,
          subscription_until = excluded.subscription_until, visible = excluded.visible, flavor_schema = excluded.flavor_schema,
          slug = excluded.slug, bowl_capacity = excluded.bowl_capacity, allow_brand_mixing = excluded.allow_brand_mixing`,
-      [id, title, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
+      [id, titleValue, nameValue, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
     );
     res.json({ success: true });
   }, res);
