@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import { randomUUID } from 'crypto';
 import pg from 'pg';
+import { createAuthRouter } from './authRoutes.js';
+import { createOwnerRouter } from './ownerRoutes.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -24,6 +26,13 @@ app.use(express.json({ limit: '2mb' }));
 // Respond to CORS preflight requests so browsers can POST JSON payloads without
 // seeing "405 Method Not Allowed" when the API is behind certain proxies/CDNs.
 app.options('*', cors());
+
+// Trust proxy to get correct IP addresses
+app.set('trust proxy', true);
+
+// Mount auth and owner routers
+app.use('/api/auth', createAuthRouter(pool));
+app.use('/api/owner', createOwnerRouter(pool));
 
 const withClient = async (handler, res) => {
   let client;

@@ -16,15 +16,60 @@ CREATE DATABASE appdb OWNER tabakapp;
 -- Подключаемся к БД и создаем таблицы
 \\\\c appdb tabakapp
 
+CREATE TABLE IF NOT EXISTS venue_owners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  phone VARCHAR(50),
+  email_verified BOOLEAN DEFAULT false,
+  verification_token TEXT,
+  reset_token TEXT,
+  reset_token_expires TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS venues (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID REFERENCES venue_owners(id) ON DELETE SET NULL,
   title VARCHAR(255) NOT NULL,
   city VARCHAR(255),
+  address TEXT,
   logo TEXT,
+  slug VARCHAR(255) UNIQUE,
+  bowl_capacity INTEGER DEFAULT 18,
+  allow_brand_mixing BOOLEAN DEFAULT true,
   subscription_until TIMESTAMP,
   visible BOOLEAN DEFAULT true,
   admin_pin VARCHAR(50),
   flavor_schema JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS venue_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID REFERENCES venue_owners(id) ON DELETE CASCADE,
+  venue_name VARCHAR(255) NOT NULL,
+  city VARCHAR(255) NOT NULL,
+  address TEXT,
+  phone VARCHAR(50),
+  email VARCHAR(255),
+  description TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  admin_notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS owner_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id UUID NOT NULL REFERENCES venue_owners(id) ON DELETE CASCADE,
+  refresh_token TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  user_agent TEXT,
+  ip_address INET,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -71,6 +116,12 @@ CREATE INDEX IF NOT EXISTS idx_flavors_venue ON flavors(venue_id);
 CREATE INDEX IF NOT EXISTS idx_brands_venue ON brands(venue_id);
 CREATE INDEX IF NOT EXISTS idx_mixes_user ON mixes(user_id);
 CREATE INDEX IF NOT EXISTS idx_mixes_created ON mixes(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_venues_owner ON venues(owner_id);
+CREATE INDEX IF NOT EXISTS idx_venues_slug ON venues(slug);
+CREATE INDEX IF NOT EXISTS idx_venue_applications_owner ON venue_applications(owner_id);
+CREATE INDEX IF NOT EXISTS idx_venue_applications_status ON venue_applications(status);
+CREATE INDEX IF NOT EXISTS idx_owner_sessions_owner ON owner_sessions(owner_id);
+CREATE INDEX IF NOT EXISTS idx_owner_sessions_expires ON owner_sessions(expires_at);
 
 GRANT CONNECT ON DATABASE appdb TO tabakapp;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO tabakapp;

@@ -1,0 +1,19 @@
+    # Владельческий кабинет
+    location /owner {
+        alias /home/tabakapp/apps/tabak_multiuser/dist/owner.html;
+        expires 1h;
+        add_header Cache-Control "public, max-age=3600";
+    }
+    
+    # Владельческий кабинет (с подпапками)
+    location /owner/ {
+        alias /home/tabakapp/apps/tabak_multiuser/dist/;
+        try_files $uri $uri/ /owner.html;
+    }
+    
+    # JS/CSS/assets
+    location /assets/ {
+        alias /home/tabakapp/apps/tabak_multiuser/dist/assets/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
