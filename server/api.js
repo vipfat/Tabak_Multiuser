@@ -194,19 +194,21 @@ app.post('/api/clients', async (req, res) => {
   }, res);
 });
 
-app.get('/api/mixes', async (req, res) => {
-  const userId = Number(req.query.userId);
-  if (!Number.isFinite(userId)) return res.json([]);
-
-  await withClient(async (client) => {
-    const result = await client.query(
-      'select * from mixes where user_id = $1 order by created_at desc',
-      [userId],
-    );
-    res.json(result.rows);
-  }, res);
-});
-
+  app.get('/api/venues', async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT id,
+                COALESCE(title, name) AS title,
+                city, logo, subscription_until, visible, admin_pin, flavor_schema
+           FROM venues
+           ORDER BY COALESCE(title, name) ASC`
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error('Error fetching venues:', err);
+      res.status(500).json({ error: 'Failed to fetch venues' });
+    }
+  });
 app.post('/api/mixes', async (req, res) => {
   const { user_id, name, ingredients, venue_snapshot } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id is required' });
