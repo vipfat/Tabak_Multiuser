@@ -71,6 +71,8 @@ const VenueSelector: React.FC<VenueSelectorProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <a
               href="/owner"
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-800/60 bg-emerald-500/5 text-xs sm:text-sm font-semibold text-emerald-100 hover:bg-emerald-500/10 hover:border-emerald-600/80 transition-colors"
             >
               <ArrowUpRight size={14} />

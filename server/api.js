@@ -16,8 +16,16 @@ if (!process.env.DATABASE_URL) {
   console.warn('[api] DATABASE_URL is not set; server will start but database requests will fail');
 }
 
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key-change-in-production') {
+  console.error('[api] ⚠️  WARNING: JWT_SECRET is not set or using default value! This is insecure for production!');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 20, // максимум соединений в пуле
+  min: 2, // минимум соединений
+  idleTimeoutMillis: 30000, // закрывать неиспользуемые соединения через 30 сек
+  connectionTimeoutMillis: 10000, // таймаут подключения 10 сек
 });
 
 const app = express();
@@ -58,14 +66,7 @@ const withClient = async (handler, res) => {
   }
 };
 
-app.get('/api/venues', async (_req, res) => {
-  await withClient(async (client) => {
-    const result = await client.query(
-      'select id, name as title, city from venues order by name asc'
-    );
-    res.json(result.rows);
-  }, res);
-});
+// Эндпоинт GET /api/venues перемещен ниже с улучшенным запросом (COALESCE)
 
 app.post('/api/venues', async (req, res) => {
   const { id, title, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing } = req.body || {};
@@ -77,14 +78,40 @@ app.post('/api/venues', async (req, res) => {
     const slugValue = slug === '' ? null : slug;
     const nameValue = name || title || null;
     
-    await client.query(
-      `insert into venues (id, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       on conflict (id) do update set name = excluded.name, city = excluded.city, logo = excluded.logo,
-         subscription_until = excluded.subscription_until, visible = excluded.visible, flavor_schema = excluded.flavor_schema,
-         slug = excluded.slug, bowl_capacity = excluded.bowl_capacity, allow_brand_mixing = excluded.allow_brand_mixing`,
-      [id, nameValue, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
-    );
+    // Primary attempt: insert with full column set
+    try {
+      await client.query(
+        `insert into venues (id, name, city, logo, subscription_until, visible, flavor_schema, slug, bowl_capacity, allow_brand_mixing)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         on conflict (id) do update set name = excluded.name, city = excluded.city, logo = excluded.logo,
+           subscription_until = excluded.subscription_until, visible = excluded.visible, flavor_schema = excluded.flavor_schema,
+           slug = excluded.slug, bowl_capacity = excluded.bowl_capacity, allow_brand_mixing = excluded.allow_brand_mixing`,
+        [id, nameValue, city, logoValue, subscriptionUntilValue, visible, flavorSchemaValue, slugValue, bowl_capacity ?? 18, allow_brand_mixing ?? true],
+      );
+    } catch (err) {
+      // Fallback: minimal schema support when some columns are missing in DB
+      // Try inserting only id, name, city, visible
+      try {
+        await client.query(
+          `insert into venues (id, name, city, visible)
+           values ($1, $2, $3, $4)
+           on conflict (id) do update set name = excluded.name, city = excluded.city, visible = excluded.visible`,
+          [id, nameValue, city, visible ?? true],
+        );
+      } catch (err2) {
+        // As a last resort, try columns (id, title, city, visible) if DB uses 'title'
+        try {
+          await client.query(
+            `insert into venues (id, title, city, visible)
+             values ($1, $2, $3, $4)
+             on conflict (id) do update set title = excluded.title, city = excluded.city, visible = excluded.visible`,
+            [id, nameValue, city, visible ?? true],
+          );
+        } catch (err3) {
+          throw err3;
+        }
+      }
+    }
     res.json({ success: true });
   }, res);
 });
@@ -113,8 +140,11 @@ app.put('/api/flavors', async (req, res) => {
   const { venueId, flavors = [], brands = [] } = req.body || {};
   if (!venueId) return res.status(400).json({ error: 'venueId is required' });
 
-  await withClient(async (client) => {
+  let client;
+  try {
+    client = await pool.connect();
     await client.query('begin');
+    
     await client.query('delete from flavors where venue_id = $1', [venueId]);
     await client.query('delete from brands where venue_id = $1', [venueId]);
 
@@ -143,7 +173,21 @@ app.put('/api/flavors', async (req, res) => {
 
     await client.query('commit');
     res.json({ success: true });
-  }, res);
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('rollback');
+      } catch (rollbackError) {
+        console.error('[api] rollback failed', rollbackError);
+      }
+    }
+    console.error('[api] flavors update failed', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Database error' });
+    }
+  } finally {
+    client?.release();
+  }
 });
 
 app.post('/api/pin', async (req, res) => {
@@ -200,21 +244,18 @@ app.post('/api/clients', async (req, res) => {
   }, res);
 });
 
-  app.get('/api/venues', async (req, res) => {
-    try {
-      const result = await pool.query(
-        `SELECT id,
-                COALESCE(title, name) AS title,
-                city, logo, subscription_until, visible, admin_pin, flavor_schema
-           FROM venues
-           ORDER BY COALESCE(title, name) ASC`
-      );
-      res.json(result.rows);
-    } catch (err) {
-      console.error('Error fetching venues:', err);
-      res.status(500).json({ error: 'Failed to fetch venues' });
-    }
-  });
+app.get('/api/venues', async (_req, res) => {
+  await withClient(async (client) => {
+    const result = await client.query(
+      `SELECT id,
+              COALESCE(title, name) AS title,
+              city, logo, subscription_until, visible, admin_pin, flavor_schema
+         FROM venues
+         ORDER BY COALESCE(title, name) ASC`
+    );
+    res.json(result.rows);
+  }, res);
+});
 app.post('/api/mixes', async (req, res) => {
   const { user_id, name, ingredients, venue_snapshot } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id is required' });

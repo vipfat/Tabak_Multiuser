@@ -578,7 +578,12 @@ const App: React.FC = () => {
               </div>
             </div>
             <button
-              onClick={() => setIsVenueSelectorOpen(true)}
+              onClick={() => {
+                // Clear saved venue and open selector
+                localStorage.removeItem('selectedVenue');
+                setSelectedVenue(null);
+                setIsVenueSelectorOpen(true);
+              }}
               className="px-3 py-2 text-sm font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
             >
               Сменить место
@@ -689,6 +694,7 @@ const App: React.FC = () => {
           onAuthError={handleAuthFailure}
           authError={authError}
           onLogout={handleLogout}
+          currentVenue={selectedVenue}
       />
 
       {/* Master Mode Fullscreen */}

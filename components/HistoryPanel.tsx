@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TelegramUser, SavedMix } from '../types';
+import { TelegramUser, SavedMix, Venue } from '../types';
 import { X, Heart, Clock, Trash2, ArrowRightCircle, Search, MapPin, LogOut, Loader2 } from 'lucide-react';
 import { getHistory, toggleFavoriteMix, deleteMix } from '../services/storageService';
 import TelegramAuthCard from './TelegramAuthCard';
@@ -13,6 +13,7 @@ interface HistoryPanelProps {
   onAuthError: (error: string) => void;
   authError: string;
   onLogout: () => void;
+  currentVenue: Venue | null;
 }
 
 const HistoryPanel: React.FC<HistoryPanelProps> = ({
@@ -24,6 +25,7 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
   onAuthError,
   authError,
   onLogout,
+  currentVenue,
 }) => {
   const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history');
   const [mixes, setMixes] = useState<SavedMix[]>([]);
@@ -75,9 +77,14 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
   if (!isOpen) return null;
 
+  // Filter mixes by current venue if venue is selected
+  const venueFilteredMixes = currentVenue
+    ? mixes.filter(m => m.venue?.id === currentVenue.id)
+    : mixes;
+
   const displayedMixes = activeTab === 'history'
-    ? mixes
-    : mixes.filter(m => m.isFavorite);
+    ? venueFilteredMixes
+    : venueFilteredMixes.filter(m => m.isFavorite);
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
