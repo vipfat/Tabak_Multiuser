@@ -28,8 +28,11 @@ const getContrastYIQ = (hexcolor: string) => {
 };
 
 const BowlChart: React.FC<BowlChartProps> = ({ mix, totalWeight, bowlCapacity = MAX_BOWL_SIZE }) => {
+  // Use venue-specific bowl capacity or default
+  const capacity = bowlCapacity ?? MAX_BOWL_SIZE;
+  
   // Prepare data: Add an "Empty" slice if bowl isn't full
-  const remaining = MAX_BOWL_SIZE - totalWeight;
+  const remaining = capacity - totalWeight;
   
   const data = [
     ...mix.map(item => ({

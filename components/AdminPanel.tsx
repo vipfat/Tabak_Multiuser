@@ -51,17 +51,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   // Venue Settings State
   const [bowlCapacity, setBowlCapacity] = useState<number>(18);
   const [allowBrandMixing, setAllowBrandMixing] = useState<boolean>(true);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
         setSyncStatus({ type: 'idle', msg: '' });
-        // Load venue settings
-        if (selectedVenue) {
+        // Load venue settings ONLY when AdminPanel opens
+        if (selectedVenue && !hasInitialized) {
           setBowlCapacity(selectedVenue.bowl_capacity ?? 18);
           setAllowBrandMixing(selectedVenue.allow_brand_mixing ?? true);
+          setHasInitialized(true);
         }
+    } else {
+        // Reset when closing
+        setHasInitialized(false);
     }
-  }, [isOpen, selectedVenue]);
+  }, [isOpen]);
 
   // 1. Brands for FILTERING (Only those that actually have flavors in the list)
   // This ensures no "empty" brands appear in the Stock filter dropdown.

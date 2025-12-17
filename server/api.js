@@ -1,16 +1,18 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHmac, createHash } from 'crypto';
 import pg from 'pg';
 import { createAuthRouter } from './authRoutes.js';
 import { createOwnerRouter } from './ownerRoutes.js';
+import { validateTelegramPayload } from './telegramAuth.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 const { Pool } = pg;
 const PORT = process.env.PORT || 3000;
+const TELEGRAM_AUTH_TTL = Number(process.env.TELEGRAM_AUTH_TTL || 600);
 
 if (!process.env.DATABASE_URL) {
   console.warn('[api] DATABASE_URL is not set; server will start but database requests will fail');
@@ -65,6 +67,63 @@ const withClient = async (handler, res) => {
     client?.release();
   }
 };
+
+// Telegram WebApp callback handler (Express wrapper around telegramAuth.js)
+const telegramCallbackHandler = async (req, res) => {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) {
+    return res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN not configured' });
+  }
+
+  const httpsOnly = process.env.TELEGRAM_HTTPS_ONLY !== 'false';
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || '').toString().split(',')[0].trim();
+  if (httpsOnly && proto !== 'https') {
+    return res.status(400).json({ error: 'HTTPS is required', hint: 'Set TELEGRAM_HTTPS_ONLY=false for local testing without TLS' });
+  }
+
+  // Accept both GET (query) and POST (body)
+  const payload = req.method === 'GET' ? req.query : (req.body || {});
+
+  const now = Math.floor(Date.now() / 1000);
+  const validation = validateTelegramPayload(botToken, payload, now, TELEGRAM_AUTH_TTL);
+  if (!validation.ok) {
+    return res.status(validation.status).json({ error: validation.error });
+  }
+
+  const user = {
+    id: Number(payload.id),
+    first_name: payload.first_name,
+    last_name: payload.last_name,
+    username: payload.username,
+    photo_url: payload.photo_url,
+    language_code: payload.language_code,
+  };
+
+  const exp = now + 3600;
+  const tokenPayload = Buffer.from(JSON.stringify({ sub: user.id, iat: now, exp })).toString('base64url');
+  const tokenSignature = createHmac('sha256', createHash('sha256').update(botToken).digest())
+    .update(tokenPayload)
+    .digest('base64url');
+  const token = `${tokenPayload}.${tokenSignature}`;
+
+  // Optionally persist the user as a client for later mixes linking
+  await withClient(async (client) => {
+    await client.query(
+      `insert into clients (id, first_name, last_name, username, language_code, last_seen_at)
+       values ($1, $2, $3, $4, $5, now())
+       on conflict (id) do update set first_name = excluded.first_name, last_name = excluded.last_name,
+         username = excluded.username, language_code = excluded.language_code, last_seen_at = now()`,
+      [user.id, user.first_name, user.last_name, user.username, user.language_code],
+    );
+  }, res);
+
+  if (res.headersSent) return; // withClient may have sent 500
+
+  return res.status(200).json({ user, token, expires_in: exp - now });
+};
+
+// Register Telegram callback after handler definition
+app.all('/api/auth/telegram/callback', telegramCallbackHandler);
 
 // Эндпоинт GET /api/venues перемещен ниже с улучшенным запросом (COALESCE)
 
@@ -249,13 +308,31 @@ app.get('/api/venues', async (_req, res) => {
     const result = await client.query(
       `SELECT id,
               COALESCE(title, name) AS title,
-              city, logo, subscription_until, visible, admin_pin, flavor_schema
+              city, logo, subscription_until, visible, admin_pin, flavor_schema,
+              bowl_capacity, allow_brand_mixing
          FROM venues
          ORDER BY COALESCE(title, name) ASC`
     );
     res.json(result.rows);
   }, res);
 });
+
+app.get('/api/mixes', async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+
+  await withClient(async (client) => {
+    const result = await client.query(
+      `select id, user_id, name, ingredients, is_favorite, venue_snapshot, created_at
+       from mixes
+       where user_id = $1
+       order by created_at desc`,
+      [userId],
+    );
+    res.json(result.rows);
+  }, res);
+});
+
 app.post('/api/mixes', async (req, res) => {
   const { user_id, name, ingredients, venue_snapshot } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id is required' });

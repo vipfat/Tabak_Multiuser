@@ -42,20 +42,24 @@ export const fetchVenues = async (): Promise<Venue[]> => {
 }; 
 
 export const upsertVenue = async (venue: Venue) => {
+  const payload = {
+    id: venue.id,
+    title: venue.title,
+    city: venue.city,
+    logo: venue.logo,
+    subscription_until: venue.subscriptionUntil,
+    visible: venue.visible,
+    flavor_schema: venue.scriptUrl,
+    slug: venue.slug || '',
+    bowl_capacity: venue.bowl_capacity ?? 18,
+    allow_brand_mixing: venue.allow_brand_mixing ?? true,
+  };
+  
+  console.log('[upsertVenue] Sending payload:', payload);
+  
   await apiFetch('/venues', {
     method: 'POST',
-    body: JSON.stringify({
-      id: venue.id,
-      title: venue.title,
-      city: venue.city,
-      logo: venue.logo,
-      subscription_until: venue.subscriptionUntil,
-      visible: venue.visible,
-      flavor_schema: venue.scriptUrl,
-      slug: venue.slug || '',
-      bowl_capacity: venue.bowl_capacity ?? 18,
-      allow_brand_mixing: venue.allow_brand_mixing ?? true,
-    }),
+    body: JSON.stringify(payload),
   });
 };
 
