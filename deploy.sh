@@ -108,6 +108,14 @@ sleep 2
 pm2 status tabak-api
 
 echo ""
+echo "6️⃣  Копирую owner-страницу в landing..."
+cp /home/tabakapp/apps/tabak_multiuser/dist/owner.html /home/tabakapp/apps/tabak_landing/dist/ 2>/dev/null || true
+cp /home/tabakapp/apps/tabak_multiuser/dist/assets/owner-*.js /home/tabakapp/apps/tabak_landing/dist/assets/ 2>/dev/null || true
+cp /home/tabakapp/apps/tabak_multiuser/dist/assets/settings-*.js /home/tabakapp/apps/tabak_landing/dist/assets/ 2>/dev/null || true
+cp /home/tabakapp/apps/tabak_multiuser/dist/assets/settings-*.css /home/tabakapp/apps/tabak_landing/dist/assets/ 2>/dev/null || true
+echo "✓ Owner-страница обновлена"
+
+echo ""
 echo "✅ Деплой завершен успешно!"
 echo ""
 echo "Проверьте:"
