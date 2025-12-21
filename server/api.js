@@ -309,7 +309,7 @@ app.get('/api/venues', async (_req, res) => {
       `SELECT id,
               COALESCE(title, name) AS title,
               city, logo, subscription_until, visible, admin_pin, flavor_schema,
-              bowl_capacity, allow_brand_mixing
+              bowl_capacity, allow_brand_mixing, slug
          FROM venues
          ORDER BY COALESCE(title, name) ASC`
     );
