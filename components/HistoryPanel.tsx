@@ -77,14 +77,10 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
 
   if (!isOpen) return null;
 
-  // Filter mixes by current venue if venue is selected
-  const venueFilteredMixes = currentVenue
-    ? mixes.filter(m => m.venue?.id === currentVenue.id)
-    : mixes;
-
+  // Show all mixes regardless of current venue
   const displayedMixes = activeTab === 'history'
-    ? venueFilteredMixes
-    : venueFilteredMixes.filter(m => m.isFavorite);
+    ? mixes
+    : mixes.filter(m => m.isFavorite);
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end">
