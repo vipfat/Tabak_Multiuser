@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { LoginForm, RegisterForm } from './components/OwnerAuth';
 import { OwnerDashboard } from './components/OwnerDashboard';
-import { Loader2 } from 'lucide-react';
+import { SuperAdminPanel } from './components/SuperAdminPanel';
+import { Loader2, Shield } from 'lucide-react';
 
 const OwnerApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [owner, setOwner] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showRegister, setShowRegister] = useState(false);
+  const [showSuperAdmin, setShowSuperAdmin] = useState(false);
+  const [adminClicks, setAdminClicks] = useState(0);
 
   useEffect(() => {
     checkAuth();
@@ -100,15 +103,37 @@ const OwnerApp: React.FC = () => {
     );
   }
 
+  const handleTitleClick = () => {
+    setAdminClicks(prev => prev + 1);
+    if (adminClicks >= 6) {
+      setShowSuperAdmin(true);
+      setAdminClicks(0);
+    }
+    setTimeout(() => setAdminClicks(0), 2000);
+  };
+
   if (isAuthenticated && owner) {
-    return <OwnerDashboard owner={owner} onLogout={handleLogout} />;
+    return (
+      <>
+        <OwnerDashboard owner={owner} onLogout={handleLogout} />
+        {showSuperAdmin && (
+          <SuperAdminPanel
+            isOpen={showSuperAdmin}
+            onClose={() => setShowSuperAdmin(false)}
+          />
+        )}
+      </>
+    );
   }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-6xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
+          <h1 
+            className="text-4xl font-bold text-white mb-2 cursor-pointer select-none"
+            onClick={handleTitleClick}
+          >
             Кальянный Алхимик
           </h1>
           <p className="text-gray-400">

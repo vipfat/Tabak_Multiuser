@@ -424,5 +424,164 @@ const result = await client.query(
     }
   });
 
+  /**
+   * GET /api/owner/applications/all
+   * Get all applications (super admin only)
+   */
+  router.get('/applications/all', async (req, res) => {
+    let client;
+    try {
+      client = await pool.connect();
+
+      const result = await client.query(
+        `SELECT 
+          va.id,
+          va.venue_name,
+          va.city,
+          va.address,
+          va.slug,
+          va.status,
+          va.admin_notes,
+          va.created_at,
+          vo.id as owner_id,
+          vo.email as owner_email,
+          vo.full_name as owner_name
+         FROM venue_applications va
+         JOIN venue_owners vo ON va.owner_id = vo.id
+         ORDER BY 
+           CASE va.status 
+             WHEN 'pending' THEN 1 
+             WHEN 'approved' THEN 2 
+             WHEN 'rejected' THEN 3 
+           END,
+           va.created_at DESC`
+      );
+
+      res.json(result.rows);
+    } catch (error) {
+      console.error('[owner] Get all applications error:', error);
+      res.status(500).json({ error: 'Failed to fetch applications' });
+    } finally {
+      client?.release();
+    }
+  });
+
+  /**
+   * POST /api/owner/applications/:id/approve
+   * Approve venue application (super admin only)
+   */
+  router.post('/applications/:id/approve', async (req, res) => {
+    const { id } = req.params;
+    const { admin_notes } = req.body;
+    let client;
+
+    try {
+      client = await pool.connect();
+      await client.query('BEGIN');
+
+      // Get application details
+      const appResult = await client.query(
+        `SELECT * FROM venue_applications WHERE id = $1`,
+        [id]
+      );
+
+      if (appResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      const app = appResult.rows[0];
+
+      // Create venue
+      const venueId = randomUUID();
+      await client.query(
+        `INSERT INTO venues 
+         (id, name, title, city, address, slug, owner_id, visible, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+        [
+          venueId,
+          app.venue_name,
+          app.venue_name,
+          app.city,
+          app.address || null,
+          app.slug || null,
+          app.owner_id,
+          true
+        ]
+      );
+
+      // Update application status
+      await client.query(
+        `UPDATE venue_applications 
+         SET status = 'approved', admin_notes = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [admin_notes || '', id]
+      );
+
+      await client.query('COMMIT');
+      res.json({ success: true, venueId });
+    } catch (error) {
+      await client?.query('ROLLBACK');
+      console.error('[owner] Approve application error:', error);
+      res.status(500).json({ error: 'Failed to approve application' });
+    } finally {
+      client?.release();
+    }
+  });
+
+  /**
+   * POST /api/owner/applications/:id/reject
+   * Reject venue application (super admin only)
+   */
+  router.post('/applications/:id/reject', async (req, res) => {
+    const { id } = req.params;
+    const { admin_notes } = req.body;
+    let client;
+
+    try {
+      client = await pool.connect();
+
+      await client.query(
+        `UPDATE venue_applications 
+         SET status = 'rejected', admin_notes = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [admin_notes || 'Отклонено администратором', id]
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[owner] Reject application error:', error);
+      res.status(500).json({ error: 'Failed to reject application' });
+    } finally {
+      client?.release();
+    }
+  });
+
+  /**
+   * PATCH /api/owner/venues/:id/visibility
+   * Toggle venue visibility (super admin only)
+   */
+  router.patch('/venues/:id/visibility', async (req, res) => {
+    const { id } = req.params;
+    const { visible } = req.body;
+    let client;
+
+    try {
+      client = await pool.connect();
+
+      await client.query(
+        `UPDATE venues SET visible = $1 WHERE id = $2`,
+        [visible, id]
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[owner] Toggle visibility error:', error);
+      res.status(500).json({ error: 'Failed to update visibility' });
+    } finally {
+      client?.release();
+    }
+  });
+
   return router;
 }
