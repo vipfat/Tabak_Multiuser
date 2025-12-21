@@ -130,8 +130,12 @@ export function createOwnerRouter(pool) {
     try {
       client = await pool.connect();
 
-const result = await client.query(
-        `SELECT id, name AS title, city FROM venues WHERE owner_id = $1 ORDER BY name ASC`,
+      const result = await client.query(
+        `SELECT id, title, city, address, slug, visible, created_at 
+         FROM venues 
+         WHERE owner_id = $1 
+         ORDER BY title ASC`,
+        [req.owner.id]
       );
 
       res.json(result.rows);
