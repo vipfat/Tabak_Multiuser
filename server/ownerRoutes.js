@@ -1,13 +1,42 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { requireAuth } from './authMiddleware.js';
-import { requireSuperAdmin } from './adminMiddleware.js';
 
 export function createOwnerRouter(pool) {
   const router = express.Router();
 
   // All routes require authentication
   router.use(requireAuth);
+
+  // Super admin middleware factory
+  const requireSuperAdmin = async (req, res, next) => {
+    try {
+      // Get owner from database to check role
+      const result = await pool.query(
+        'SELECT id, email, role FROM venue_owners WHERE id = $1',
+        [req.owner.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Владелец не найден' });
+      }
+
+      const owner = result.rows[0];
+
+      if (owner.role !== 'super_admin') {
+        return res.status(403).json({ 
+          error: 'Доступ запрещен. Требуется роль супер админа.' 
+        });
+      }
+
+      // Update owner data in request with role
+      req.owner = owner;
+      next();
+    } catch (error) {
+      console.error('[ownerRoutes] Super admin check error:', error);
+      return res.status(500).json({ error: 'Ошибка проверки прав доступа' });
+    }
+  };
 
   /**
    * GET /api/owner/profile

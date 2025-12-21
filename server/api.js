@@ -40,6 +40,9 @@ app.options('*', cors());
 // Trust proxy to get correct IP addresses
 app.set('trust proxy', true);
 
+// Make pool available to middlewares
+app.locals.pool = pool;
+
 // Mount auth and owner routers
 app.use('/api/auth', createAuthRouter(pool));
 app.use('/api/owner', createOwnerRouter(pool));
