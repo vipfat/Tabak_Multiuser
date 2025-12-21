@@ -50,6 +50,7 @@ export interface Venue {
   id: string;
   title: string;
   city: string;
+  address?: string;
   logo: string;
   scriptUrl: string;
   subscriptionUntil: string;
