@@ -1,6 +1,7 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
 import { requireAuth } from './authMiddleware.js';
+import { requireSuperAdmin } from './adminMiddleware.js';
 
 export function createOwnerRouter(pool) {
   const router = express.Router();
@@ -428,7 +429,7 @@ const result = await client.query(
    * GET /api/owner/applications/all
    * Get all applications (super admin only)
    */
-  router.get('/applications/all', async (req, res) => {
+  router.get('/applications/all', requireSuperAdmin, async (req, res) => {
     let client;
     try {
       client = await pool.connect();
@@ -470,7 +471,7 @@ const result = await client.query(
    * POST /api/owner/applications/:id/approve
    * Approve venue application (super admin only)
    */
-  router.post('/applications/:id/approve', async (req, res) => {
+  router.post('/applications/:id/approve', requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     const { admin_notes } = req.body;
     let client;
@@ -533,7 +534,7 @@ const result = await client.query(
    * POST /api/owner/applications/:id/reject
    * Reject venue application (super admin only)
    */
-  router.post('/applications/:id/reject', async (req, res) => {
+  router.post('/applications/:id/reject', requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     const { admin_notes } = req.body;
     let client;
@@ -561,7 +562,7 @@ const result = await client.query(
    * PATCH /api/owner/venues/:id/visibility
    * Toggle venue visibility (super admin only)
    */
-  router.patch('/venues/:id/visibility', async (req, res) => {
+  router.patch('/venues/:id/visibility', requireSuperAdmin, async (req, res) => {
     const { id } = req.params;
     const { visible } = req.body;
     let client;

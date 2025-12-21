@@ -265,7 +265,7 @@ export function createAuthRouter(pool) {
       client = await pool.connect();
 
       const result = await client.query(
-        `SELECT id, email, full_name, phone, email_verified, created_at
+        `SELECT id, email, full_name, phone, email_verified, role, created_at
          FROM venue_owners
          WHERE id = $1`,
         [req.owner.id]
@@ -283,6 +283,7 @@ export function createAuthRouter(pool) {
         fullName: owner.full_name,
         phone: owner.phone,
         emailVerified: owner.email_verified,
+        role: owner.role || 'owner',
         createdAt: owner.created_at
       });
 
