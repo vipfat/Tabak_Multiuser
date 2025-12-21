@@ -308,7 +308,7 @@ app.get('/api/venues', async (_req, res) => {
     const result = await client.query(
       `SELECT id,
               COALESCE(title, name) AS title,
-              city, logo, subscription_until, visible, admin_pin, flavor_schema,
+              city, address, logo, subscription_until, visible, admin_pin, flavor_schema,
               bowl_capacity, allow_brand_mixing, slug
          FROM venues
          ORDER BY COALESCE(title, name) ASC`
