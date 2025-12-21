@@ -6,7 +6,7 @@ export default defineConfig(({ mode, command }) => {
     const env = loadEnv(mode, '.', '');
     const isProduction = mode === 'production';
     return {
-      base: '/app/',
+      base: command === 'serve' ? '/' : '/app/',
       server: {
         port: 3000,
         host: '0.0.0.0',
@@ -17,7 +17,22 @@ export default defineConfig(({ mode, command }) => {
           },
         },
       },
-      plugins: [react()],
+      plugins: [
+        react(),
+        {
+          name: 'multi-base-plugin',
+          transformIndexHtml: {
+            enforce: 'post',
+            transform(html, ctx) {
+              // Для owner.html используем /owner/ вместо /app/
+              if (ctx.filename.includes('owner.html')) {
+                return html.replace(/\/app\/assets\//g, '/owner/assets/');
+              }
+              return html;
+            }
+          }
+        }
+      ],
       build: {
         rollupOptions: {
           input: {
