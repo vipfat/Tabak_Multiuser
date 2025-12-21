@@ -115,7 +115,11 @@ const OwnerApp: React.FC = () => {
   if (isAuthenticated && owner) {
     return (
       <>
-        <OwnerDashboard owner={owner} onLogout={handleLogout} />
+        <OwnerDashboard 
+          owner={owner} 
+          onLogout={handleLogout}
+          onTitleClick={handleTitleClick}
+        />
         {showSuperAdmin && (
           <SuperAdminPanel
             isOpen={showSuperAdmin}

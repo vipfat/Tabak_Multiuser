@@ -34,9 +34,10 @@ interface Application {
 interface OwnerDashboardProps {
   owner: Owner;
   onLogout: () => void;
+  onTitleClick?: () => void;
 }
 
-export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ owner, onLogout }) => {
+export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ owner, onLogout, onTitleClick }) => {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -121,7 +122,11 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ owner, onLogout 
       <header className="bg-surface border-b border-gray-800">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div 
+              className="flex items-center gap-3 cursor-pointer select-none"
+              onClick={onTitleClick}
+              title="7 кликов для активации супер админ панели"
+            >
               <Store className="w-8 h-8 text-primary" />
               <div>
                 <h1 className="text-xl font-bold text-white">Личный кабинет</h1>

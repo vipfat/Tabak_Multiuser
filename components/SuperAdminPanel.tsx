@@ -41,7 +41,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     try {
       // Load applications
       const appsResponse = await fetch('/api/owner/applications/all', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('ownerToken')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
       });
       
       if (appsResponse.ok) {
@@ -68,7 +68,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ownerToken')}`
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
         },
         body: JSON.stringify({ 
           admin_notes: notes[applicationId] || '' 
@@ -96,7 +96,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ownerToken')}`
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
         },
         body: JSON.stringify({ 
           admin_notes: reason 
@@ -121,7 +121,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ownerToken')}`
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
         },
         body: JSON.stringify({ visible: !currentVisibility })
       });
