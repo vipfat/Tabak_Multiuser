@@ -32,10 +32,13 @@ const OwnerApp: React.FC = () => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('[OwnerApp] Auth me response:', data);
+        console.log('[OwnerApp] User role:', data.role);
         setOwner(data);
         setIsAuthenticated(true);
         // Auto-show super admin panel if user is super_admin
         if (data.role === 'super_admin') {
+          console.log('[OwnerApp] Opening super admin panel');
           setShowSuperAdmin(true);
         }
       } else if (response.status === 401) {
@@ -108,17 +111,10 @@ const OwnerApp: React.FC = () => {
   }
 
   const handleTitleClick = () => {
-    // Only allow super admins to toggle panel
-    if (owner?.role !== 'super_admin') {
-      return;
+    // Toggle super admin panel for super_admin users
+    if (owner?.role === 'super_admin') {
+      setShowSuperAdmin(prev => !prev);
     }
-    
-    setAdminClicks(prev => prev + 1);
-    if (adminClicks >= 6) {
-      setShowSuperAdmin(prev => !prev); // Toggle instead of just showing
-      setAdminClicks(0);
-    }
-    setTimeout(() => setAdminClicks(0), 2000);
   };
 
   if (isAuthenticated && owner) {

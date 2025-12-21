@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Store, Plus, Settings, LogOut, BarChart3, Users, 
-  CheckCircle, Clock, XCircle, Loader2, MapPin, Code
+  CheckCircle, Clock, XCircle, Loader2, MapPin, Code, Shield
 } from 'lucide-react';
 
 interface Owner {
@@ -10,6 +10,7 @@ interface Owner {
   fullName: string;
   phone?: string;
   emailVerified: boolean;
+  role?: string;
 }
 
 interface Venue {
@@ -123,9 +124,7 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ owner, onLogout,
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div 
-              className="flex items-center gap-3 cursor-pointer select-none"
-              onClick={onTitleClick}
-              title="7 кликов для активации супер админ панели"
+              className="flex items-center gap-3"
             >
               <Store className="w-8 h-8 text-primary" />
               <div>
@@ -141,6 +140,16 @@ export const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ owner, onLogout,
               >
                 <span className="hidden sm:inline">На главную</span>
               </a>
+              {owner.role === 'super_admin' && (
+                <button
+                  onClick={onTitleClick}
+                  className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-sm rounded"
+                  title="Супер-админ панель"
+                >
+                  <Shield className="w-5 h-5" />
+                  <span className="hidden sm:inline">Супер-админ</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowApiTester(!showApiTester)}
                 className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-primary transition-colors text-sm"

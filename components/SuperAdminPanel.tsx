@@ -5,11 +5,11 @@ import {
 } from 'lucide-react';
 
 interface VenueApplication {
-  id: string;
+  id: number;
   venue_name: string;
   city: string;
   address?: string;
-  owner_id: string;
+  owner_id: number;
   owner_email: string;
   owner_name: string;
   status: 'pending' | 'approved' | 'rejected';
@@ -27,7 +27,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
   const [allVenues, setAllVenues] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'venues'>('pending');
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [notes, setNotes] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (isOpen) {
@@ -67,7 +67,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     }
   };
 
-  const handleApprove = async (applicationId: string) => {
+  const handleApprove = async (applicationId: number) => {
     try {
       const response = await fetch(`/api/owner/applications/${applicationId}/approve`, {
         method: 'POST',
@@ -92,7 +92,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     }
   };
 
-  const handleReject = async (applicationId: string) => {
+  const handleReject = async (applicationId: number) => {
     const reason = notes[applicationId] || prompt('Причина отклонения:');
     if (!reason) return;
 
@@ -120,7 +120,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
     }
   };
 
-  const toggleVenueVisibility = async (venueId: string, currentVisibility: boolean) => {
+  const toggleVenueVisibility = async (venueId: number, currentVisibility: boolean) => {
     try {
       const response = await fetch(`/api/owner/venues/${venueId}/visibility`, {
         method: 'PATCH',
