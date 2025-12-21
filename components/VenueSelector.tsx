@@ -167,9 +167,9 @@ const VenueSelector: React.FC<VenueSelectorProps> = ({
 
                   <h3 className="text-sm sm:text-lg font-bold leading-tight">{venue.title}</h3>
                   {/* Display city and address */}
-                  <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-slate-400 mt-1 sm:mt-2">
-                    <MapPin size={12} className="flex-shrink-0" />
-                    <span className="truncate">
+                  <div className="flex items-start gap-1 sm:gap-2 text-xs sm:text-sm text-slate-400 mt-1 sm:mt-2">
+                    <MapPin size={12} className="flex-shrink-0 mt-0.5" />
+                    <span className="break-words">
                       {venue.city || 'Город не указан'}{venue.address ? `, ${venue.address}` : ''}
                     </span>
                   </div>

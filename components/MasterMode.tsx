@@ -28,7 +28,10 @@ const MasterMode: React.FC<MasterModeProps> = ({ isOpen, onClose, mix, totalWeig
             <MapPin size={16} className="text-emerald-400" />
             <div>
               <p className="font-semibold text-white">{venue?.title || 'Заведение не выбрано'}</p>
-              <p className="text-xs text-slate-400">{venue?.city || 'Укажите заведение, чтобы загрузить вкусы'}</p>
+              <p className="text-xs text-slate-400">
+                {venue?.city || 'Укажите заведение, чтобы загрузить вкусы'}
+                {venue?.address && `, ${venue.address}`}
+              </p>
             </div>
           </div>
         </div>

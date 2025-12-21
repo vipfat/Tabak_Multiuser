@@ -168,10 +168,12 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({
                             <span className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
                                 {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(mix.timestamp)}
                                 {mix.venue ? (
-                                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 bg-slate-800 px-2 py-1 rounded-lg">
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 bg-slate-800 px-2 py-1 rounded-lg flex-wrap">
                                     <MapPin size={12} className="text-emerald-400" />
                                     <span className="font-semibold text-slate-200">{mix.venue.title}</span>
-                                    <span className="text-slate-500">{mix.venue.city}</span>
+                                    <span className="text-slate-500">
+                                      {mix.venue.city}{mix.venue.address && `, ${mix.venue.address}`}
+                                    </span>
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg">
