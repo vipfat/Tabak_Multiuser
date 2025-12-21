@@ -30,6 +30,7 @@ export const fetchVenues = async (): Promise<Venue[]> => {
       id: String(v.id),
       title: String(v.title || 'Без названия').trim(),
       city: String(v.city || 'Город не указан').trim(),
+      address: v.address ? String(v.address).trim() : undefined,
       logo: String(v.logo || '').trim(),
       scriptUrl: String(v.flavor_schema || '').trim(),
       subscriptionUntil: String(v.subscription_until || '').trim(),
