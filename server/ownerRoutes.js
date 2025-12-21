@@ -469,7 +469,6 @@ const result = await client.query(
           va.venue_name,
           va.city,
           va.address,
-          va.slug,
           va.status,
           va.admin_notes,
           va.created_at,

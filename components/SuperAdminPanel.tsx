@@ -9,7 +9,6 @@ interface VenueApplication {
   venue_name: string;
   city: string;
   address?: string;
-  slug?: string;
   owner_id: string;
   owner_email: string;
   owner_name: string;
@@ -46,14 +45,20 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
       
       if (appsResponse.ok) {
         const appsData = await appsResponse.json();
+        console.log('[SuperAdminPanel] Loaded applications:', appsData);
         setApplications(appsData);
+      } else {
+        console.error('[SuperAdminPanel] Failed to load applications:', appsResponse.status, await appsResponse.text());
       }
 
       // Load all venues
       const venuesResponse = await fetch('/api/venues');
       if (venuesResponse.ok) {
         const venuesData = await venuesResponse.json();
+        console.log('[SuperAdminPanel] Loaded venues:', venuesData);
         setAllVenues(venuesData);
+      } else {
+        console.error('[SuperAdminPanel] Failed to load venues:', venuesResponse.status);
       }
     } catch (error) {
       console.error('Failed to load admin data:', error);
@@ -142,6 +147,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
   const displayedApplications = activeTab === 'pending' 
     ? pendingApplications 
     : applications;
+
+  console.log('[SuperAdminPanel] Render state:', {
+    isOpen,
+    isLoading,
+    activeTab,
+    totalApplications: applications.length,
+    pendingCount: pendingApplications.length,
+    displayedCount: displayedApplications.length,
+    allVenuesCount: allVenues.length
+  });
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950">
@@ -288,11 +303,6 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ isOpen, onClos
                       <MapPin size={14} />
                       <span>{app.city}{app.address && `, ${app.address}`}</span>
                     </div>
-                    {app.slug && (
-                      <p className="text-sm text-slate-500 mt-1">
-                        Slug: <span className="font-mono text-purple-400">{app.slug}</span>
-                      </p>
-                    )}
                   </div>
                   <div className={`px-3 py-1 rounded-full text-xs font-bold ${
                     app.status === 'pending'
