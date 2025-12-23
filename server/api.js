@@ -378,6 +378,410 @@ app.delete('/api/mixes/:id', async (req, res) => {
   }, res);
 });
 
+// ========================================
+// GLOBAL FLAVORS ENDPOINTS
+// ========================================
+
+app.get('/api/global-flavors', async (_req, res) => {
+  await withClient(async (client) => {
+    const result = await client.query(
+      `SELECT id, name, brand, description, color, created_at
+       FROM global_flavors
+       ORDER BY brand ASC, name ASC`
+    );
+    res.json(result.rows);
+  }, res);
+});
+
+app.get('/api/venues/:venueId/flavors/merged', async (req, res) => {
+  const venueId = req.params.venueId;
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+
+  await withClient(async (client) => {
+    // Get global flavors available to this venue
+    const globalFlavorsQuery = await client.query(
+      `SELECT 
+        gf.id,
+        gf.name,
+        gf.brand,
+        gf.description,
+        gf.color,
+        vgf.is_visible as is_available,
+        'global' as source
+       FROM global_flavors gf
+       INNER JOIN venue_global_flavors vgf ON gf.id = vgf.global_flavor_id
+       WHERE vgf.venue_id = $1
+       ORDER BY gf.brand ASC, gf.name ASC`,
+      [venueId]
+    );
+
+    // Get custom flavors for this venue
+    const customFlavorsQuery = await client.query(
+      `SELECT 
+        id,
+        name,
+        brand,
+        description,
+        color,
+        is_available,
+        'custom' as source
+       FROM custom_flavors
+       WHERE venue_id = $1
+       ORDER BY brand ASC, name ASC`,
+      [venueId]
+    );
+
+    // Merge results
+    const flavors = [...globalFlavorsQuery.rows, ...customFlavorsQuery.rows];
+    
+    res.json({ flavors });
+  }, res);
+});
+
+app.post('/api/venues/:venueId/flavors/visibility', async (req, res) => {
+  const venueId = req.params.venueId;
+  const { updates = [] } = req.body || {};
+  
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({ error: 'updates array is required' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    // Update visibility for each flavor
+    for (const update of updates) {
+      const { flavorId, isVisible, source } = update;
+      
+      if (source === 'global') {
+        // Update venue_global_flavors
+        await client.query(
+          `INSERT INTO venue_global_flavors (venue_id, global_flavor_id, is_visible, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (venue_id, global_flavor_id)
+           DO UPDATE SET is_visible = $3, updated_at = NOW()`,
+          [venueId, flavorId, isVisible]
+        );
+      } else if (source === 'custom') {
+        // Update custom_flavors
+        await client.query(
+          `UPDATE custom_flavors
+           SET is_available = $1
+           WHERE id = $2 AND venue_id = $3`,
+          [isVisible, flavorId, venueId]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true, updated: updates.length });
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('[api] rollback failed', rollbackError);
+      }
+    }
+    console.error('[api] visibility update failed', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Database error' });
+    }
+  } finally {
+    client?.release();
+  }
+});
+
+// Add global flavors to venue (make them available)
+app.post('/api/venues/:venueId/flavors/add-global', async (req, res) => {
+  const venueId = req.params.venueId;
+  const { flavorIds = [] } = req.body || {};
+  
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+  if (!Array.isArray(flavorIds) || flavorIds.length === 0) {
+    return res.status(400).json({ error: 'flavorIds array is required' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const values = flavorIds.map((_, idx) => 
+      `($1, $${idx + 2}, false, NOW())`
+    ).join(',');
+    
+    const params = [venueId, ...flavorIds];
+
+    await client.query(
+      `INSERT INTO venue_global_flavors (venue_id, global_flavor_id, is_visible, updated_at)
+       VALUES ${values}
+       ON CONFLICT (venue_id, global_flavor_id) DO NOTHING`,
+      params
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, added: flavorIds.length });
+  } catch (error) {
+    if (client) {
+      await client.query('ROLLBACK');
+    }
+    console.error('[api] add global flavors failed', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Database error' });
+    }
+  } finally {
+    client?.release();
+  }
+});
+
+// ========================================
+// MASTER MIXES ENDPOINTS
+// ========================================
+
+app.get('/api/venues/:venueId/master-mixes', async (req, res) => {
+  const venueId = req.params.venueId;
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+
+  await withClient(async (client) => {
+    const result = await client.query(
+      `SELECT id, name, ingredients, venue_snapshot, display_order, created_at
+       FROM mixes
+       WHERE is_master_mix = true 
+         AND is_published = true
+         AND venue_snapshot->>'id' = $1
+       ORDER BY display_order ASC, created_at DESC`,
+      [venueId]
+    );
+    res.json(result.rows);
+  }, res);
+});
+
+app.post('/api/master-mixes', async (req, res) => {
+  const { venueId, name, ingredients, isPublished = false, displayOrder = 0 } = req.body || {};
+  
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+  if (!name || !ingredients || !Array.isArray(ingredients)) {
+    return res.status(400).json({ error: 'name and ingredients are required' });
+  }
+
+  await withClient(async (client) => {
+    // Get venue snapshot
+    const venueResult = await client.query(
+      `SELECT id, title, city, bowl_capacity, allow_brand_mixing FROM venues WHERE id = $1`,
+      [venueId]
+    );
+    
+    if (venueResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Venue not found' });
+    }
+
+    const venueSnapshot = venueResult.rows[0];
+    const id = randomUUID();
+
+    const result = await client.query(
+      `INSERT INTO mixes 
+       (id, name, ingredients, venue_snapshot, is_master_mix, is_published, display_order, created_at)
+       VALUES ($1, $2, $3, $4, true, $5, $6, NOW())
+       RETURNING *`,
+      [
+        id,
+        name,
+        JSON.stringify(ingredients),
+        JSON.stringify(venueSnapshot),
+        isPublished,
+        displayOrder
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  }, res);
+});
+
+app.patch('/api/master-mixes/:id', async (req, res) => {
+  const mixId = req.params.id;
+  const { name, ingredients, isPublished, displayOrder } = req.body || {};
+
+  if (!mixId) return res.status(400).json({ error: 'mixId is required' });
+
+  await withClient(async (client) => {
+    const updates = [];
+    const values = [];
+    let paramIdx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramIdx++}`);
+      values.push(name);
+    }
+    if (ingredients !== undefined) {
+      updates.push(`ingredients = $${paramIdx++}`);
+      values.push(JSON.stringify(ingredients));
+    }
+    if (isPublished !== undefined) {
+      updates.push(`is_published = $${paramIdx++}`);
+      values.push(isPublished);
+    }
+    if (displayOrder !== undefined) {
+      updates.push(`display_order = $${paramIdx++}`);
+      values.push(displayOrder);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    values.push(mixId);
+
+    const result = await client.query(
+      `UPDATE mixes 
+       SET ${updates.join(', ')}
+       WHERE id = $${paramIdx} AND is_master_mix = true
+       RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Master mix not found' });
+    }
+
+    res.json(result.rows[0]);
+  }, res);
+});
+
+app.delete('/api/master-mixes/:id', async (req, res) => {
+  const mixId = req.params.id;
+  if (!mixId) return res.status(400).json({ error: 'mixId is required' });
+
+  await withClient(async (client) => {
+    const result = await client.query(
+      'DELETE FROM mixes WHERE id = $1 AND is_master_mix = true RETURNING id',
+      [mixId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Master mix not found' });
+    }
+
+    res.json({ success: true });
+  }, res);
+});
+
+// ========================================
+// STATISTICS ENDPOINTS
+// ========================================
+
+app.get('/api/venues/:venueId/stats/popular-flavors', async (req, res) => {
+  const venueId = req.params.venueId;
+  const { period = '30' } = req.query; // days: 30, 90, or 'all'
+  
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+
+  await withClient(async (client) => {
+    let dateFilter = '';
+    if (period !== 'all') {
+      dateFilter = `AND created_at > NOW() - INTERVAL '${parseInt(period)} days'`;
+    }
+
+    const result = await client.query(
+      `SELECT 
+        ingredient->>'id' as flavor_id,
+        ingredient->>'name' as flavor_name,
+        ingredient->>'brand' as flavor_brand,
+        ingredient->>'color' as flavor_color,
+        COUNT(*) as usage_count,
+        AVG((ingredient->>'grams')::numeric) as avg_grams
+       FROM mixes,
+       jsonb_array_elements(ingredients) as ingredient
+       WHERE venue_snapshot->>'id' = $1
+         AND is_master_mix = false
+         ${dateFilter}
+       GROUP BY 
+         ingredient->>'id',
+         ingredient->>'name',
+         ingredient->>'brand',
+         ingredient->>'color'
+       ORDER BY usage_count DESC
+       LIMIT 100`,
+      [venueId]
+    );
+
+    res.json({
+      period: period === 'all' ? 'all' : `${period} days`,
+      flavors: result.rows.map(row => ({
+        id: row.flavor_id,
+        name: row.flavor_name,
+        brand: row.flavor_brand,
+        color: row.flavor_color,
+        usageCount: parseInt(row.usage_count),
+        avgGrams: parseFloat(row.avg_grams || 0).toFixed(1)
+      }))
+    });
+  }, res);
+});
+
+app.get('/api/venues/:venueId/stats/purchase-list', async (req, res) => {
+  const venueId = req.params.venueId;
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+
+  await withClient(async (client) => {
+    // Get invisible global flavors (available but not visible)
+    const globalResult = await client.query(
+      `SELECT 
+        gf.name,
+        gf.brand,
+        gf.description
+       FROM global_flavors gf
+       INNER JOIN venue_global_flavors vgf ON gf.id = vgf.global_flavor_id
+       WHERE vgf.venue_id = $1 AND vgf.is_visible = false
+       ORDER BY gf.brand ASC, gf.name ASC`,
+      [venueId]
+    );
+
+    // Get invisible custom flavors
+    const customResult = await client.query(
+      `SELECT name, brand, description
+       FROM custom_flavors
+       WHERE venue_id = $1 AND is_available = false
+       ORDER BY brand ASC, name ASC`,
+      [venueId]
+    );
+
+    // Merge and group by brand
+    const allFlavors = [...globalResult.rows, ...customResult.rows];
+    const grouped = {};
+
+    allFlavors.forEach(flavor => {
+      const brand = flavor.brand || 'Other';
+      if (!grouped[brand]) {
+        grouped[brand] = [];
+      }
+      grouped[brand].push({
+        name: flavor.name,
+        description: flavor.description
+      });
+    });
+
+    // Format as grouped text
+    let formattedText = '';
+    Object.keys(grouped).sort().forEach(brand => {
+      formattedText += `${brand}:\n`;
+      grouped[brand].forEach(flavor => {
+        formattedText += `  - ${flavor.name}\n`;
+      });
+      formattedText += '\n';
+    });
+
+    res.json({
+      totalCount: allFlavors.length,
+      grouped,
+      formattedText: formattedText.trim()
+    });
+  }, res);
+});
+
 app.listen(PORT, () => {
   console.log(`[api] listening on port ${PORT}`);
 });

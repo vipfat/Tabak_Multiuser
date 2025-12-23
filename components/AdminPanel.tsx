@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Flavor, FlavorBrand } from '../types';
-import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle, MapPin } from 'lucide-react';
+import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle, MapPin, BarChart3, ShoppingCart, ChefHat, Copy } from 'lucide-react';
 import { saveFlavorsAndBrands, fetchFlavors, generateUuid } from '../services/storageService';
+import { apiFetch } from '../services/apiClient';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -33,7 +34,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     selectedVenue,
     onUpdateVenue,
 }) => {
-  const [activeTab, setActiveTab] = useState<'stock' | 'add' | 'brands' | 'settings'>('stock');
+  const [activeTab, setActiveTab] = useState<'stock' | 'add' | 'brands' | 'settings' | 'statistics' | 'master-mixes'>('stock');
   const [syncStatus, setSyncStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error', msg: string }>({ type: 'idle', msg: '' });
   
   // Stock Tab Filters
@@ -267,16 +268,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             Наличие
           </button>
           <button 
-            onClick={() => setActiveTab('brands')}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-3 ${activeTab === 'brands' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
+            onClick={() => setActiveTab('master-mixes')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-3 flex items-center justify-center gap-1 ${activeTab === 'master-mixes' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
           >
-            Бренды
+            <ChefHat size={16} />
+            Мастер-миксы
           </button>
           <button 
-            onClick={() => setActiveTab('add')}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-3 ${activeTab === 'add' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
+            onClick={() => setActiveTab('statistics')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-3 flex items-center justify-center gap-1 ${activeTab === 'statistics' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
           >
-            Добавить вкус
+            <BarChart3 size={16} />
+            Статистика
           </button>
           <button 
             onClick={() => setActiveTab('settings')}
@@ -644,8 +647,250 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
               </div>
           )}
+
+          {/* Statistics Tab */}
+          {activeTab === 'statistics' && (
+              <StatisticsTab venueId={activeVenueId} />
+          )}
+
+          {/* Master Mixes Tab */}
+          {activeTab === 'master-mixes' && (
+              <MasterMixesTab venueId={activeVenueId} selectedVenue={selectedVenue} />
+          )}
         </div>
       </div>
+    </div>
+  );
+};
+
+// ========================================
+// STATISTICS TAB COMPONENT
+// ========================================
+
+interface StatisticsTabProps {
+  venueId?: string;
+}
+
+const StatisticsTab: React.FC<StatisticsTabProps> = ({ venueId }) => {
+  const [subTab, setSubTab] = useState<'popular' | 'purchase'>('popular');
+  const [period, setPeriod] = useState<'30' | '90' | 'all'>('30');
+  const [popularFlavors, setPopularFlavors] = useState<any[]>([]);
+  const [purchaseList, setPurchaseList] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (venueId && subTab === 'popular') {
+      loadPopularFlavors();
+    }
+  }, [venueId, subTab, period]);
+
+  useEffect(() => {
+    if (venueId && subTab === 'purchase') {
+      loadPurchaseList();
+    }
+  }, [venueId, subTab]);
+
+  const loadPopularFlavors = async () => {
+    if (!venueId) return;
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const data = await apiFetch<any>(`/venues/${venueId}/stats/popular-flavors?period=${period}`);
+      setPopularFlavors(data.flavors || []);
+    } catch (err: any) {
+      setError(err.message || 'Не удалось загрузить статистику');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadPurchaseList = async () => {
+    if (!venueId) return;
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const data = await apiFetch<any>(`/venues/${venueId}/stats/purchase-list`);
+      setPurchaseList(data);
+    } catch (err: any) {
+      setError(err.message || 'Не удалось загрузить список закупки');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyPurchaseList = () => {
+    if (!purchaseList?.formattedText) return;
+    navigator.clipboard.writeText(purchaseList.formattedText);
+    alert('Список скопирован в буфер обмена!');
+  };
+
+  if (!venueId) {
+    return (
+      <div className="p-6 text-center text-slate-400">
+        <BarChart3 className="mx-auto mb-3 opacity-30" size={48} />
+        <p>Выберите заведение для просмотра статистики</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Sub Tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setSubTab('popular')}
+          className={`flex-1 py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all ${
+            subTab === 'popular' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          <BarChart3 size={18} />
+          Популярные табаки
+        </button>
+        <button
+          onClick={() => setSubTab('purchase')}
+          className={`flex-1 py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all ${
+            subTab === 'purchase' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`}
+        >
+          <ShoppingCart size={18} />
+          Список закупки
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-900/20 border border-red-800 text-red-400 rounded-xl p-4 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Popular Flavors */}
+      {subTab === 'popular' && (
+        <div className="space-y-4">
+          {/* Period Filter */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPeriod('30')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                period === '30' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              30 дней
+            </button>
+            <button
+              onClick={() => setPeriod('90')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                period === '90' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              90 дней
+            </button>
+            <button
+              onClick={() => setPeriod('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                period === 'all' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              Все время
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="text-center py-10 text-slate-400">Загрузка...</div>
+          ) : popularFlavors.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <BarChart3 className="mx-auto mb-3 opacity-30" size={48} />
+              <p>Нет данных за выбранный период</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {popularFlavors.map((flavor, idx) => (
+                <div
+                  key={flavor.id}
+                  className="bg-slate-800 rounded-lg p-3 flex items-center gap-3"
+                >
+                  <div className="text-lg font-bold text-emerald-400 w-8">#{idx + 1}</div>
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: flavor.color }}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-white">{flavor.name}</p>
+                    <p className="text-xs text-slate-400">{flavor.brand}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-white">{flavor.usageCount} раз</p>
+                    <p className="text-xs text-slate-400">~{flavor.avgGrams}г</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Purchase List */}
+      {subTab === 'purchase' && (
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="text-center py-10 text-slate-400">Загрузка...</div>
+          ) : !purchaseList || purchaseList.totalCount === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <ShoppingCart className="mx-auto mb-3 opacity-30" size={48} />
+              <p>Все табаки видимы, нечего закупать!</p>
+            </div>
+          ) : (
+            <>
+              <div className="bg-slate-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-white">
+                    Невидимые табаки ({purchaseList.totalCount})
+                  </h3>
+                  <button
+                    onClick={copyPurchaseList}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <Copy size={16} />
+                    Копировать
+                  </button>
+                </div>
+
+                <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-300 whitespace-pre-wrap max-h-96 overflow-y-auto">
+                  {purchaseList.formattedText}
+                </div>
+              </div>
+
+              <div className="bg-blue-900/20 border border-blue-800 text-blue-300 rounded-lg p-3 text-xs">
+                💡 Этот список включает все табаки, которые доступны заведению, но отмечены как невидимые.
+                Скопируйте и отправьте поставщику!
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ========================================
+// MASTER MIXES TAB COMPONENT  
+// ========================================
+
+interface MasterMixesTabProps {
+  venueId?: string;
+  selectedVenue?: any;
+}
+
+const MasterMixesTab: React.FC<MasterMixesTabProps> = ({ venueId, selectedVenue }) => {
+  // TODO: Implement master mixes management
+  // This will be a complex component with mix editor, similar to main app
+  return (
+    <div className="flex-1 overflow-y-auto p-6 text-center text-slate-400">
+      <ChefHat className="mx-auto mb-3 opacity-30" size={48} />
+      <p className="mb-2">Управление мастер-миксами</p>
+      <p className="text-xs">Этот функционал в разработке...</p>
     </div>
   );
 };

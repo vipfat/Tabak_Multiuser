@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin } from 'lucide-react';
+import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin, Star } from 'lucide-react';
 import { Flavor, MixIngredient, TelegramUser, SavedMix, Venue } from './types';
 import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
 import { getTelegramUser, logoutTelegramUser } from './services/telegramService';
@@ -22,6 +22,7 @@ import MasterMode from './components/MasterMode';
 import HistoryPanel from './components/HistoryPanel';
 import VenueSelector from './components/VenueSelector';
 import TelegramAuthCard from './components/TelegramAuthCard';
+import MasterMixesPanel from './components/MasterMixesPanel';
 
 const App: React.FC = () => {
   // User State
@@ -46,6 +47,7 @@ const App: React.FC = () => {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMasterModeOpen, setIsMasterModeOpen] = useState(false);
+  const [isMasterMixesOpen, setIsMasterMixesOpen] = useState(false);
   
   // Admin/Secret State
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -591,6 +593,20 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Master Mixes Button - Above Bowl Chart */}
+        {selectedVenue && (
+          <section className="mb-6">
+            <button
+              onClick={() => setIsMasterMixesOpen(true)}
+              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl flex items-center justify-center gap-3 shadow-lg shadow-emerald-900/20 transition-all hover:-translate-y-0.5"
+            >
+              <Star size={20} fill="currentColor" />
+              🔥 Миксы от наших мастеров
+              <Star size={20} fill="currentColor" />
+            </button>
+          </section>
+        )}
+
         {/* Bowl Visualization */}
         <section className="mb-8 relative">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -856,6 +872,14 @@ const App: React.FC = () => {
             </div>
         </div>
       )}
+
+      {/* Master Mixes Panel */}
+      <MasterMixesPanel
+        isOpen={isMasterMixesOpen}
+        onClose={() => setIsMasterMixesOpen(false)}
+        onLoadMix={handleLoadFromHistory}
+        currentVenue={selectedVenue}
+      />
 
     </div>
   );

@@ -41,15 +41,16 @@ interface FetchResult {
     brands: string[];
 }
 
-// Fetch flavors and PIN from Supabase
+// Fetch merged flavors (global + custom) from new architecture
 export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult> => {
     if (!venueId) {
         return { flavors: AVAILABLE_FLAVORS, brands: [] };
     }
 
     try {
-        const { flavors: flavorsData = [], brands: brandsData = [] } = await apiFetch<{ flavors: any[]; brands: any[] }>(
-            `/flavors?venueId=${encodeURIComponent(venueId)}`
+        // Use new merged endpoint that combines global + custom flavors
+        const { flavors: flavorsData = [] } = await apiFetch<{ flavors: any[] }>(
+            `/venues/${encodeURIComponent(venueId)}/flavors/merged`
         );
 
         const flavors: Flavor[] = (flavorsData || []).map((row: any) => ({
@@ -61,11 +62,18 @@ export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult
             isAvailable: row.is_available !== false,
         }));
 
-        const brands: string[] = (brandsData || []).map((b: any) => String(b.name || '').trim()).filter(Boolean);
+        // Extract unique brands from flavors
+        const brandSet = new Set<string>();
+        flavors.forEach(f => {
+            if (f.brand && f.brand !== FlavorBrand.OTHER) {
+                brandSet.add(f.brand);
+            }
+        });
+        const brands = Array.from(brandSet).sort();
 
         return { flavors, brands };
     } catch (e: any) {
-        console.error('Error fetching from database:', e);
+        console.error('Error fetching flavors from database:', e);
         return { flavors: [], brands: [] };
     }
 };
