@@ -60,6 +60,7 @@ export const fetchFlavors = async (venueId?: string | null): Promise<FetchResult
             description: String(row.description || '').trim(),
             color: String(row.color || '#cccccc').trim(),
             isAvailable: row.is_available !== false,
+            source: row.source || 'custom', // 'global' or 'custom'
         }));
 
         // Extract unique brands from flavors
@@ -84,16 +85,22 @@ interface SaveResult {
     normalizedFlavors?: Flavor[];
 }
 
-// 1. Save ONLY Flavors and Brands
+// 1. Save ONLY Custom Flavors (не глобальные!)
 export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], venueId?: string | null): Promise<SaveResult> => {
     if (!venueId) {
         return { success: false, message: 'Не выбрано заведение' };
     }
 
+    // Filter ONLY custom flavors (explicit source='custom')
+    // Flavors without source field are treated as global (don't save them)
+    const customFlavorsOnly = flavors.filter((f: any) => f.source === 'custom');
+    
+    console.log('[saveFlavorsAndBrands] Total flavors:', flavors.length, 'Custom only:', customFlavorsOnly.length);
+
     const validBrands = brands.filter(b => b && b.trim() !== "");
 
     try {
-        const normalizedFlavors: Flavor[] = flavors.map(f => ({
+        const normalizedFlavors: Flavor[] = customFlavorsOnly.map(f => ({
             ...f,
             id: f.id && String(f.id).trim() !== '' ? String(f.id).trim() : generateUuid(),
             name: String(f.name || '').trim(),
@@ -124,6 +131,27 @@ export const saveFlavorsAndBrands = async (flavors: Flavor[], brands: string[], 
     } catch (error: any) {
         console.error('Failed to save flavors to database', error);
         return { success: false, message: error?.message || 'Не удалось сохранить данные' };
+    }
+};
+
+// Update visibility for global flavors
+export const updateFlavorVisibility = async (venueId: string, flavorId: string, isVisible: boolean, source: string): Promise<SaveResult> => {
+    if (!venueId) {
+        return { success: false, message: 'Не выбрано заведение' };
+    }
+
+    try {
+        await apiFetch(`/venues/${encodeURIComponent(venueId)}/flavors/visibility`, {
+            method: 'POST',
+            body: JSON.stringify({
+                updates: [{ flavorId, isVisible, source }]
+            }),
+        });
+
+        return { success: true, message: 'Видимость обновлена' };
+    } catch (error: any) {
+        console.error('Failed to update flavor visibility', error);
+        return { success: false, message: error?.message || 'Не удалось обновить видимость' };
     }
 };
 

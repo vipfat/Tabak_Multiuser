@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Flavor, FlavorBrand } from '../types';
-import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle, MapPin, BarChart3, ShoppingCart, ChefHat, Copy } from 'lucide-react';
-import { saveFlavorsAndBrands, fetchFlavors, generateUuid } from '../services/storageService';
+import { X, Save, Power, Eye, EyeOff, RotateCcw, Cloud, UploadCloud, DownloadCloud, Settings, AlertCircle, CheckCircle2, Trash2, Filter, List, PlusCircle, MapPin, BarChart3, ShoppingCart, ChefHat, Copy, Edit, Loader2 } from 'lucide-react';
+import { saveFlavorsAndBrands, fetchFlavors, generateUuid, updateFlavorVisibility } from '../services/storageService';
 import { apiFetch } from '../services/apiClient';
 
 interface AdminPanelProps {
@@ -48,6 +48,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Brand Management State
   const [newBrandInput, setNewBrandInput] = useState('');
+  const [customBrandInput, setCustomBrandInput] = useState('');
+  const [useCustomBrand, setUseCustomBrand] = useState(false);
 
   // Venue Settings State
   const [bowlCapacity, setBowlCapacity] = useState<number>(18);
@@ -96,35 +98,71 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // --- ACTIONS ---
 
+  const handleToggleFlavorVisibility = async (flavor: Flavor) => {
+    if (!activeVenueId) return;
+    
+    const newAvailability = !flavor.isAvailable;
+    
+    // Update local state immediately
+    onUpdateFlavor({ ...flavor, isAvailable: newAvailability });
+    
+    try {
+      // Use visibility endpoint for both global AND custom flavors
+      await updateFlavorVisibility(
+        activeVenueId, 
+        flavor.id, 
+        newAvailability, 
+        flavor.source || 'custom'
+      );
+    } catch (error) {
+      console.error('Failed to update flavor visibility:', error);
+      // Revert local state on error
+      onUpdateFlavor({ ...flavor, isAvailable: flavor.isAvailable });
+      alert('Ошибка при изменении видимости: ' + (error as any)?.message);
+    }
+  };
+
   const handleAddFlavorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName) return;
 
-    if (!brandSelectValue || brandSelectValue === FlavorBrand.OTHER) {
-        alert("Пожалуйста, выберите бренд из списка. Если бренда нет, добавьте его во вкладке 'Бренды'.");
+    // Use custom brand if checkbox is checked, otherwise use selected brand
+    const finalBrand = useCustomBrand ? customBrandInput.trim() : brandSelectValue;
+
+    if (!finalBrand || finalBrand === FlavorBrand.OTHER) {
+        alert(useCustomBrand ? "Введите название бренда" : "Пожалуйста, выберите бренд из списка");
         return;
+    }
+
+    // If using custom brand, add it to brands list
+    if (useCustomBrand && customBrandInput.trim() && !brandOptions.includes(customBrandInput.trim())) {
+        if (setCustomBrands) {
+            setCustomBrands([...customBrands, customBrandInput.trim()]);
+        }
     }
 
     const newFlavor: Flavor = {
       id: generateUuid(),
       name: newName,
-      brand: brandSelectValue,
+      brand: finalBrand,
       description: newDescription,
       color: newColor,
-      isAvailable: true
+      isAvailable: true,
+      source: 'custom'
     };
 
-    const updatedFlavors = [newFlavor, ...allFlavors];
+    // Add to local state first
     onAddFlavor(newFlavor);
 
     if (activeVenueId) {
         try {
             setSyncStatus({ type: 'loading', msg: 'Сохранение нового вкуса...' });
-            const result = await saveFlavorsAndBrands(updatedFlavors, customBrands, activeVenueId);
-
-            if (result.normalizedFlavors && setAllFlavors) {
-                setAllFlavors(result.normalizedFlavors);
-            }
+            
+            // Get all custom flavors (filter out global and flavors without source)
+            const customFlavorsOnly = allFlavors.filter((f: any) => f.source === 'custom');
+            const updatedCustomFlavors = [newFlavor, ...customFlavorsOnly];
+            
+            const result = await saveFlavorsAndBrands(updatedCustomFlavors, customBrands, activeVenueId);
 
             setSyncStatus({ type: result.success ? 'success' : 'error', msg: result.message });
         } catch (error: any) {
@@ -136,6 +174,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setNewName('');
     setNewDescription('');
     setBrandSelectValue('');
+    setCustomBrandInput('');
+    setUseCustomBrand(false);
 
     alert('Вкус добавлен и сохранён');
   };
@@ -197,8 +237,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       try {
         setSyncStatus({ type: 'loading', msg: 'Сохранение...' });
 
-        // Send ONLY Flavors and Brands. DO NOT SEND PIN.
-        const result = await saveFlavorsAndBrands(allFlavors, customBrands, activeVenueId);
+        // Filter to ONLY custom flavors (explicit source='custom')
+        const customFlavorsOnly = allFlavors.filter((f: any) => f.source === 'custom');
+        console.log('[handleSyncToCloud] Saving custom flavors only:', customFlavorsOnly.length, 'of', allFlavors.length);
+        
+        const result = await saveFlavorsAndBrands(customFlavorsOnly, customBrands, activeVenueId);
         
         if (result.success) {
             setSyncStatus({ type: 'success', msg: result.message });
@@ -266,6 +309,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-3 ${activeTab === 'stock' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
           >
             Наличие
+          </button>
+          <button 
+            onClick={() => setActiveTab('add')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all px-3 flex items-center justify-center gap-1 ${activeTab === 'add' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-700'}`}
+          >
+            <PlusCircle size={16} />
+            Добавить
           </button>
           <button 
             onClick={() => setActiveTab('master-mixes')}
@@ -374,12 +424,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="flex items-center gap-2 text-xs text-slate-500">
                             <span className="text-emerald-400 bg-emerald-900/20 px-1.5 py-0.5 rounded">{flavor.brand}</span>
                             {flavor.description && <span className="truncate max-w-[100px] text-slate-600">{flavor.description}</span>}
+                            {flavor.source === 'global' && <span className="text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded">Глобальный</span>}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <button 
-                            onClick={() => onUpdateFlavor({ ...flavor, isAvailable: !flavor.isAvailable })}
+                            onClick={() => handleToggleFlavorVisibility(flavor)}
                             className={`px-3 py-1.5 shrink-0 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${flavor.isAvailable ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500 border border-slate-700'}`}
                         >
                             {flavor.isAvailable ? 'Виден' : 'Скрыт'}
@@ -453,22 +504,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <form onSubmit={handleAddFlavorSubmit} className="space-y-4 max-w-md mx-auto py-2">
                <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-300">Производитель (Бренд)</label>
-                  <div className="relative">
-                    <select 
-                        value={brandSelectValue}
-                        onChange={(e) => setBrandSelectValue(e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none"
-                    >
-                        <option value="" disabled>Выберите бренд...</option>
-                        {brandOptions.map(b => (
-                            <option key={b} value={b}>{b}</option>
-                        ))}
-                    </select>
-                    <List className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
-                  </div>
+                  
+                  {/* Checkbox to toggle custom brand input */}
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input
+                      type="checkbox"
+                      checked={useCustomBrand}
+                      onChange={(e) => setUseCustomBrand(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <span className="text-xs text-slate-400">Создать новый бренд</span>
+                  </label>
+
+                  {useCustomBrand ? (
+                    <input
+                      type="text"
+                      value={customBrandInput}
+                      onChange={(e) => setCustomBrandInput(e.target.value)}
+                      placeholder="Введите название бренда (например: Spectrum)"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-emerald-500 focus:outline-none"
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="relative">
+                      <select 
+                          value={brandSelectValue}
+                          onChange={(e) => setBrandSelectValue(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-emerald-500 focus:outline-none appearance-none"
+                      >
+                          <option value="" disabled>Выберите бренд...</option>
+                          {brandOptions.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                          ))}
+                      </select>
+                      <List className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
+                    </div>
+                  )}
+                  
                   <p className="text-[10px] text-slate-500 flex items-center gap-1">
                       <AlertCircle size={10} />
-                      Если бренда нет в списке, добавьте его во вкладке <b>Бренды</b>.
+                      {useCustomBrand ? 'Новый бренд будет автоматически добавлен в список' : 'Или включите чекбокс выше, чтобы создать новый бренд'}
                   </p>
                </div>
 
@@ -883,14 +958,556 @@ interface MasterMixesTabProps {
   selectedVenue?: any;
 }
 
+interface MasterMix {
+  id: string;
+  name: string;
+  ingredients: any[];
+  display_order: number;
+  is_published: boolean;
+  created_at: string;
+}
+
 const MasterMixesTab: React.FC<MasterMixesTabProps> = ({ venueId, selectedVenue }) => {
-  // TODO: Implement master mixes management
-  // This will be a complex component with mix editor, similar to main app
+  const [mixes, setMixes] = React.useState<MasterMix[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [showCreateForm, setShowCreateForm] = React.useState(false);
+  const [editingMix, setEditingMix] = React.useState<MasterMix | null>(null);
+
+  const loadMixes = async () => {
+    if (!venueId) return;
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const response = await fetch(`/api/venues/${venueId}/master-mixes?includeAll=true`);
+      if (!response.ok) throw new Error('Failed to load master mixes');
+      
+      const data = await response.json();
+      setMixes(data || []);
+    } catch (err: any) {
+      setError(err.message || 'Не удалось загрузить мастер-миксы');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadMixes();
+  }, [venueId]);
+
+  const handleDeleteMix = async (mixId: string) => {
+    if (!window.confirm('Удалить этот мастер-микс?')) return;
+
+    try {
+      const response = await fetch(`/api/master-mixes/${mixId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) throw new Error('Failed to delete mix');
+      
+      await loadMixes();
+    } catch (err: any) {
+      alert('Ошибка удаления: ' + err.message);
+    }
+  };
+
+  const handleTogglePublish = async (mix: MasterMix) => {
+    try {
+      const response = await fetch(`/api/master-mixes/${mix.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isPublished: !mix.is_published
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to update mix');
+      
+      await loadMixes();
+    } catch (err: any) {
+      alert('Ошибка обновления: ' + err.message);
+    }
+  };
+
+  if (!venueId) {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 text-center text-slate-400">
+        <ChefHat className="mx-auto mb-3 opacity-30" size={48} />
+        <p>Выберите заведение для управления мастер-миксами</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 overflow-y-auto p-6 text-center text-slate-400">
-      <ChefHat className="mx-auto mb-3 opacity-30" size={48} />
-      <p className="mb-2">Управление мастер-миксами</p>
-      <p className="text-xs">Этот функционал в разработке...</p>
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <ChefHat size={20} className="text-emerald-400" />
+            Мастер-миксы
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">
+            Готовые рецепты от ваших кальянщиков, которые видят клиенты
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreateForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-colors"
+        >
+          <PlusCircle size={18} />
+          Создать
+        </button>
+      </div>
+
+      {error && (
+        <div className="bg-red-900/20 border border-red-800 text-red-300 rounded-lg p-3 text-sm">
+          {error}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="text-center py-10 text-slate-400">
+          <Loader2 className="animate-spin mx-auto mb-2" size={32} />
+          <p className="text-sm">Загрузка...</p>
+        </div>
+      ) : mixes.length === 0 ? (
+        <div className="text-center py-10 text-slate-400">
+          <ChefHat className="mx-auto mb-3 opacity-30" size={48} />
+          <p className="mb-2">Пока нет мастер-миксов</p>
+          <p className="text-xs mb-4">Создайте первый рецепт для ваших клиентов</p>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg transition-colors"
+          >
+            <PlusCircle size={18} />
+            Создать мастер-микс
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {mixes.map((mix) => {
+            const totalWeight = mix.ingredients.reduce((sum: number, ing: any) => sum + (ing.grams || 0), 0);
+            
+            return (
+              <div
+                key={mix.id}
+                className="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition-all"
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-base font-bold text-white">{mix.name}</h4>
+                      {mix.is_published ? (
+                        <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded border border-emerald-500/30">
+                          Опубликован
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-slate-700 text-slate-400 text-xs font-medium rounded">
+                          Черновик
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {mix.ingredients.length} вкусов • {totalWeight}г
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTogglePublish(mix)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        mix.is_published
+                          ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                      }`}
+                    >
+                      {mix.is_published ? 'Скрыть' : 'Опубликовать'}
+                    </button>
+                    <button
+                      onClick={() => setEditingMix(mix)}
+                      className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+                      title="Редактировать"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteMix(mix.id)}
+                      className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
+                      title="Удалить"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {mix.ingredients.slice(0, 5).map((ing: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 bg-slate-900 rounded-md text-xs"
+                    >
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: ing.color || '#888' }}
+                      />
+                      <span className="text-slate-300 font-medium">{ing.name}</span>
+                      <span className="text-slate-500">{ing.grams}г</span>
+                    </div>
+                  ))}
+                  {mix.ingredients.length > 5 && (
+                    <span className="text-xs text-slate-500 self-center">
+                      +{mix.ingredients.length - 5} ещё
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {(showCreateForm || editingMix) && (
+        <MasterMixEditor
+          venueId={venueId}
+          selectedVenue={selectedVenue}
+          existingMix={editingMix}
+          onClose={() => {
+            setShowCreateForm(false);
+            setEditingMix(null);
+          }}
+          onSave={async () => {
+            await loadMixes();
+            setShowCreateForm(false);
+            setEditingMix(null);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ========================================
+// MASTER MIX EDITOR COMPONENT
+// ========================================
+
+interface MasterMixEditorProps {
+  venueId: string;
+  selectedVenue?: any;
+  existingMix: MasterMix | null;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+interface MixIngredient {
+  id: string;
+  name: string;
+  brand: string;
+  color: string;
+  grams: number;
+}
+
+const MasterMixEditor: React.FC<MasterMixEditorProps> = ({
+  venueId,
+  selectedVenue,
+  existingMix,
+  onClose,
+  onSave
+}) => {
+  const [mixName, setMixName] = useState(existingMix?.name || '');
+  const [ingredients, setIngredients] = useState<MixIngredient[]>(existingMix?.ingredients || []);
+  const [isPublished, setIsPublished] = useState(existingMix?.is_published || false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Flavor selection
+  const [availableFlavors, setAvailableFlavors] = useState<Flavor[]>([]);
+  const [showFlavorSelector, setShowFlavorSelector] = useState(false);
+  
+  const bowlCapacity = selectedVenue?.bowl_capacity || 18;
+  const totalWeight = ingredients.reduce((sum, ing) => sum + ing.grams, 0);
+  const remaining = bowlCapacity - totalWeight;
+
+  useEffect(() => {
+    loadAvailableFlavors();
+  }, [venueId]);
+
+  const loadAvailableFlavors = async () => {
+    try {
+      const { flavors } = await fetchFlavors(venueId);
+      setAvailableFlavors(flavors.filter(f => f.isAvailable));
+    } catch (err) {
+      console.error('Failed to load flavors:', err);
+    }
+  };
+
+  const handleAddFlavor = (flavor: Flavor) => {
+    // Check if already added
+    if (ingredients.find(i => i.id === flavor.id)) {
+      alert('Этот вкус уже добавлен');
+      return;
+    }
+
+    // Add with 1g by default
+    const newIngredient: MixIngredient = {
+      id: flavor.id,
+      name: flavor.name,
+      brand: flavor.brand,
+      color: flavor.color,
+      grams: Math.min(1, remaining)
+    };
+
+    setIngredients([...ingredients, newIngredient]);
+    setShowFlavorSelector(false);
+  };
+
+  const handleUpdateGrams = (id: string, grams: number) => {
+    const otherWeight = ingredients.filter(i => i.id !== id).reduce((sum, i) => sum + i.grams, 0);
+    const maxAllowed = bowlCapacity - otherWeight;
+    const finalGrams = Math.max(0, Math.min(grams, maxAllowed));
+
+    setIngredients(ingredients.map(ing =>
+      ing.id === id ? { ...ing, grams: finalGrams } : ing
+    ));
+  };
+
+  const handleRemoveFlavor = (id: string) => {
+    setIngredients(ingredients.filter(i => i.id !== id));
+  };
+
+  const handleSave = async () => {
+    if (!mixName.trim()) {
+      alert('Введите название микса');
+      return;
+    }
+
+    if (ingredients.length === 0) {
+      alert('Добавьте хотя бы один вкус');
+      return;
+    }
+
+    setIsSaving(true);
+    setError('');
+
+    try {
+      const method = existingMix ? 'PATCH' : 'POST';
+      const url = existingMix
+        ? `/api/master-mixes/${existingMix.id}`
+        : `/api/master-mixes`;
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          venueId,
+          name: mixName.trim(),
+          ingredients,
+          isPublished
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save mix');
+      }
+
+      onSave();
+    } catch (err: any) {
+      setError(err.message || 'Не удалось сохранить микс');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-700">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <ChefHat size={22} className="text-emerald-400" />
+              {existingMix ? 'Редактировать микс' : 'Создать мастер-микс'}
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              {totalWeight} / {bowlCapacity}г • Осталось: {remaining}г
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {error && (
+            <div className="bg-red-900/20 border border-red-800 text-red-300 rounded-lg p-3 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Mix Name */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-300">Название микса</label>
+            <input
+              type="text"
+              value={mixName}
+              onChange={(e) => setMixName(e.target.value)}
+              placeholder="Например: Ягодный взрыв"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-emerald-500 focus:outline-none"
+              autoFocus
+            />
+          </div>
+
+          {/* Publish Toggle */}
+          <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-800 rounded-xl border border-slate-700 hover:border-emerald-500 transition-colors">
+            <input
+              type="checkbox"
+              checked={isPublished}
+              onChange={(e) => setIsPublished(e.target.checked)}
+              className="w-5 h-5 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-2 focus:ring-emerald-500"
+            />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-white">Опубликовать микс</p>
+              <p className="text-xs text-slate-400">Клиенты смогут увидеть и выбрать этот рецепт</p>
+            </div>
+          </label>
+
+          {/* Ingredients */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-300">
+                Ингредиенты ({ingredients.length})
+              </label>
+              <button
+                onClick={() => setShowFlavorSelector(true)}
+                disabled={remaining <= 0}
+                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                <PlusCircle size={16} />
+                Добавить вкус
+              </button>
+            </div>
+
+            {ingredients.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 bg-slate-800 rounded-xl border border-slate-700">
+                <p className="text-sm">Добавьте вкусы в микс</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {ingredients.map((ing) => (
+                  <div
+                    key={ing.id}
+                    className="flex items-center gap-3 p-3 bg-slate-800 rounded-xl border border-slate-700"
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: ing.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{ing.name}</p>
+                      <p className="text-xs text-slate-400">{ing.brand}</p>
+                    </div>
+                    <input
+                      type="number"
+                      value={ing.grams}
+                      onChange={(e) => handleUpdateGrams(ing.id, parseInt(e.target.value) || 0)}
+                      min="0"
+                      max={bowlCapacity}
+                      className="w-20 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white text-center focus:border-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-sm text-slate-400 w-6">г</span>
+                    <button
+                      onClick={() => handleRemoveFlavor(ing.id)}
+                      className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors flex-shrink-0"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 p-4 border-t border-slate-700">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition-colors"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving || !mixName.trim() || ingredients.length === 0}
+            className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="animate-spin" size={18} />
+                Сохранение...
+              </>
+            ) : (
+              <>
+                <Save size={18} />
+                Сохранить
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Flavor Selector Modal */}
+      {showFlavorSelector && (
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4 z-[110]">
+          <div className="bg-slate-900 rounded-xl border border-slate-700 max-w-md w-full max-h-[70vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700">
+              <h3 className="text-lg font-bold text-white">Выберите вкус</h3>
+              <button
+                onClick={() => setShowFlavorSelector(false)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {availableFlavors.map((flavor) => {
+                const alreadyAdded = ingredients.find(i => i.id === flavor.id);
+                return (
+                  <button
+                    key={flavor.id}
+                    onClick={() => handleAddFlavor(flavor)}
+                    disabled={!!alreadyAdded}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left ${
+                      alreadyAdded
+                        ? 'bg-slate-800 border-slate-700 opacity-50 cursor-not-allowed'
+                        : 'bg-slate-800 border-slate-700 hover:border-emerald-500 hover:bg-slate-700'
+                    }`}
+                  >
+                    <div
+                      className="w-4 h-4 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: flavor.color }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{flavor.name}</p>
+                      <p className="text-xs text-slate-400">{flavor.brand}</p>
+                    </div>
+                    {alreadyAdded && (
+                      <span className="text-xs text-emerald-400 font-medium">Добавлен</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

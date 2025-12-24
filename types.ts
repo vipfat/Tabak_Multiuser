@@ -18,6 +18,7 @@ export interface Flavor {
   description: string; // New field for flavor profile
   color: string; // Hex code for UI (still relevant for visualization)
   isAvailable: boolean; // If false, hidden from user selector (stop-list)
+  source?: 'global' | 'custom'; // Indicates if flavor is from global_flavors or custom_flavors
 }
 
 export interface MixIngredient extends Flavor {

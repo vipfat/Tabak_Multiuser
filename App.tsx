@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin, Star } from 'lucide-react';
+import { Plus, RotateCcw, Leaf, Lock, UserCircle, Save, Eye, PenLine, RefreshCcw, Loader2, MapPin, Award } from 'lucide-react';
 import { Flavor, MixIngredient, TelegramUser, SavedMix, Venue } from './types';
 import { MAX_BOWL_SIZE, AVAILABLE_FLAVORS } from './constants';
 import { getTelegramUser, logoutTelegramUser } from './services/telegramService';
@@ -598,11 +598,20 @@ const App: React.FC = () => {
           <section className="mb-6">
             <button
               onClick={() => setIsMasterMixesOpen(true)}
-              className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl flex items-center justify-center gap-3 shadow-lg shadow-emerald-900/20 transition-all hover:-translate-y-0.5"
+              className="relative w-full py-4 backdrop-blur-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-white font-bold rounded-xl flex items-center justify-center gap-3 transition-all hover:-translate-y-0.5 overflow-hidden group border border-white/20"
+              style={{
+                boxShadow: '0 8px 32px 0 rgba(16, 185, 129, 0.2), inset 0 0 20px rgba(255, 255, 255, 0.1)',
+              }}
             >
-              <Star size={20} fill="currentColor" />
-              🔥 Миксы от наших мастеров
-              <Star size={20} fill="currentColor" />
+              {/* Animated gradient background */}
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/30 via-teal-500/30 to-purple-500/30 bg-[length:200%_100%] animate-gradient" />
+              
+              {/* Glass reflection */}
+              <div className="absolute top-0 left-0 right-0 h-1/2 bg-gradient-to-b from-white/10 to-transparent" />
+              
+              <Award size={20} className="relative z-10" />
+              <span className="relative z-10">Миксы от наших мастеров</span>
+              <Award size={20} className="relative z-10" />
             </button>
           </section>
         )}

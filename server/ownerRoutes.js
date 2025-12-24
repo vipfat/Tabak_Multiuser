@@ -544,6 +544,15 @@ export function createOwnerRouter(pool) {
       
       const venueId = venueResult.rows[0].id;
 
+      // Add all global flavors to the venue (invisible by default)
+      await client.query(
+        `INSERT INTO venue_global_flavors (venue_id, global_flavor_id, is_visible, updated_at)
+         SELECT $1, id, false, NOW()
+         FROM global_flavors
+         ON CONFLICT (venue_id, global_flavor_id) DO NOTHING`,
+        [venueId]
+      );
+
       // Update application status
       await client.query(
         `UPDATE venue_applications 
@@ -612,6 +621,51 @@ export function createOwnerRouter(pool) {
     } catch (error) {
       console.error('[owner] Toggle visibility error:', error);
       res.status(500).json({ error: 'Failed to update visibility' });
+    } finally {
+      client?.release();
+    }
+  });
+
+  /**
+   * POST /api/owner/venues/:id/sync-global-flavors
+   * Add all global flavors to venue (for existing venues)
+   */
+  router.post('/venues/:id/sync-global-flavors', async (req, res) => {
+    const venueId = req.params.id;
+    let client;
+
+    try {
+      client = await pool.connect();
+
+      // Verify ownership
+      const ownerCheck = await client.query(
+        'SELECT id FROM venues WHERE id = $1 AND owner_id = $2',
+        [venueId, req.owner.id]
+      );
+
+      if (ownerCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Venue not found' });
+      }
+
+      // Add all global flavors (invisible by default)
+      const result = await client.query(
+        `INSERT INTO venue_global_flavors (venue_id, global_flavor_id, is_visible, updated_at)
+         SELECT $1, id, false, NOW()
+         FROM global_flavors
+         ON CONFLICT (venue_id, global_flavor_id) DO NOTHING
+         RETURNING global_flavor_id`,
+        [venueId]
+      );
+
+      res.json({ 
+        success: true, 
+        added: result.rowCount,
+        message: `Added ${result.rowCount} global flavors to venue` 
+      });
+
+    } catch (error) {
+      console.error('[owner] Sync global flavors error:', error);
+      res.status(500).json({ error: 'Failed to sync global flavors' });
     } finally {
       client?.release();
     }

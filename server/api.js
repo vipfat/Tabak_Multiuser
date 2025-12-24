@@ -191,10 +191,29 @@ app.get('/api/flavors', async (req, res) => {
   if (!venueId) return res.json({ flavors: [], brands: [] });
 
   await withClient(async (client) => {
-    const flavorsPromise = client.query('select * from flavors where venue_id = $1 order by name asc', [venueId]);
-    const brandsPromise = client.query('select name from brands where venue_id = $1 order by name asc', [venueId]);
-    const [flavors, brands] = await Promise.all([flavorsPromise, brandsPromise]);
-    res.json({ flavors: flavors.rows, brands: brands.rows });
+    // Get custom flavors for this venue
+    const customFlavorsQuery = await client.query(
+      `SELECT id, name, brand, description, color, is_available
+       FROM custom_flavors
+       WHERE venue_id = $1
+       ORDER BY brand ASC, name ASC`,
+      [venueId]
+    );
+
+    // Extract unique brands from custom flavors
+    const brandSet = new Set();
+    customFlavorsQuery.rows.forEach(f => {
+      if (f.brand && f.brand.trim() !== '') {
+        brandSet.add(f.brand);
+      }
+    });
+
+    const brands = Array.from(brandSet).sort().map(name => ({ name }));
+
+    res.json({ 
+      flavors: customFlavorsQuery.rows, 
+      brands: brands 
+    });
   }, res);
 });
 
@@ -207,11 +226,14 @@ app.put('/api/flavors', async (req, res) => {
     client = await pool.connect();
     await client.query('begin');
     
-    await client.query('delete from flavors where venue_id = $1', [venueId]);
-    await client.query('delete from brands where venue_id = $1', [venueId]);
+    // Delete existing custom flavors
+    await client.query('delete from custom_flavors where venue_id = $1', [venueId]);
 
+    // Insert new custom flavors
     if (flavors.length > 0) {
-      const values = flavors.map((_, idx) => `($${idx * 7 + 1}, $${idx * 7 + 2}, $${idx * 7 + 3}, $${idx * 7 + 4}, $${idx * 7 + 5}, $${idx * 7 + 6}, $${idx * 7 + 7})`).join(',');
+      const values = flavors.map((_, idx) => 
+        `($${idx * 7 + 1}, $${idx * 7 + 2}, $${idx * 7 + 3}, $${idx * 7 + 4}, $${idx * 7 + 5}, $${idx * 7 + 6}, $${idx * 7 + 7})`
+      ).join(',');
       const params = flavors.flatMap((f) => [
         f.id || randomUUID(),
         venueId,
@@ -222,15 +244,9 @@ app.put('/api/flavors', async (req, res) => {
         f.is_available !== false,
       ]);
       await client.query(
-        `insert into flavors (id, venue_id, name, brand, description, color, is_available) values ${values}`,
+        `insert into custom_flavors (id, venue_id, name, brand, description, color, is_available) values ${values}`,
         params,
       );
-    }
-
-    if (brands.length > 0) {
-      const values = brands.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`).join(',');
-      const params = brands.flatMap((b) => [b.name, venueId]);
-      await client.query(`insert into brands (name, venue_id) values ${values}`, params);
     }
 
     await client.query('commit');
@@ -546,16 +562,24 @@ app.get('/api/venues/:venueId/master-mixes', async (req, res) => {
   const venueId = req.params.venueId;
   if (!venueId) return res.status(400).json({ error: 'venueId is required' });
 
+  // Check if includeAll query param is present (for admin panel)
+  const includeAll = req.query.includeAll === 'true';
+
   await withClient(async (client) => {
-    const result = await client.query(
-      `SELECT id, name, ingredients, venue_snapshot, display_order, created_at
-       FROM mixes
-       WHERE is_master_mix = true 
-         AND is_published = true
-         AND venue_snapshot->>'id' = $1
-       ORDER BY display_order ASC, created_at DESC`,
-      [venueId]
-    );
+    const query = includeAll
+      ? `SELECT id, name, ingredients, venue_snapshot, display_order, is_published, created_at
+         FROM mixes
+         WHERE is_master_mix = true 
+           AND venue_snapshot->>'id' = $1
+         ORDER BY display_order ASC, created_at DESC`
+      : `SELECT id, name, ingredients, venue_snapshot, display_order, created_at
+         FROM mixes
+         WHERE is_master_mix = true 
+           AND is_published = true
+           AND venue_snapshot->>'id' = $1
+         ORDER BY display_order ASC, created_at DESC`;
+
+    const result = await client.query(query, [venueId]);
     res.json(result.rows);
   }, res);
 });
@@ -778,6 +802,34 @@ app.get('/api/venues/:venueId/stats/purchase-list', async (req, res) => {
       totalCount: allFlavors.length,
       grouped,
       formattedText: formattedText.trim()
+    });
+  }, res);
+});
+
+// ========================================
+// MIGRATION/UTILITY ENDPOINTS
+// ========================================
+
+app.post('/api/venues/:venueId/sync-global-flavors', async (req, res) => {
+  const venueId = req.params.venueId;
+  if (!venueId) return res.status(400).json({ error: 'venueId is required' });
+
+  await withClient(async (client) => {
+    // Add all global flavors to venue (invisible by default)
+    const result = await client.query(
+      `INSERT INTO venue_global_flavors (venue_id, global_flavor_id, is_visible, updated_at)
+       SELECT $1, id, false, NOW()
+       FROM global_flavors
+       ON CONFLICT (venue_id, global_flavor_id) DO NOTHING
+       RETURNING global_flavor_id`,
+      [venueId]
+    );
+
+    res.json({ 
+      success: true, 
+      venueId,
+      added: result.rowCount,
+      message: `Added ${result.rowCount} global flavors to venue ${venueId}` 
     });
   }, res);
 });
